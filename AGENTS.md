@@ -1,9 +1,23 @@
-Use TDD to write tests for your implementation code.
-Running `go test ./...` should run the whole test suite.
-Write both unit and integration tests.
-Use `github.com/playwright-community/playwright-go` to write the tests that involve the UI.
+# Agents instructions
 
 Write modern Go and TypeScript code and adhere to best practices.
 
-License: AGPL v3.0
+## Backend
+
+Sqlc is used for database access and query generation. Sqlc uses the migrations to generate the database schema (in memory) and uses this schema to compile the queries in `./backend/db/queries/` to Go.
+
+The database is Sqlite.
+
+Add migrations to the database at `./backend/db/migrations/`.
+
+The backend provides a Web API for the frontend and is not available for direct user access.
+
+## Frontend
+
+React is used for the frontend with Vite as the bundler.
+
+## License
+
+AGPL v3.0
+
 Make sure this copyright notice is at the top of every code file (as a comment): `Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)`

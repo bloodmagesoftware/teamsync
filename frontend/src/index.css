@@ -1,2 +1,4 @@
 /* Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached) */
+
 @import "tailwindcss";
+@import "@catppuccin/tailwindcss/mocha.css";
