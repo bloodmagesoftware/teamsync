@@ -1,7 +1,7 @@
 // Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
+import { useUser } from "./UserContext";
 
 interface LoginRequest {
 	username: string;
@@ -12,6 +12,9 @@ interface AuthResponse {
 	success: boolean;
 	message?: string;
 	userId?: number;
+	username?: string;
+	accessToken?: string;
+	refreshToken?: string;
 }
 
 const loginUser = async (credentials: LoginRequest): Promise<AuthResponse> => {
@@ -26,13 +29,16 @@ const loginUser = async (credentials: LoginRequest): Promise<AuthResponse> => {
 export default function Login() {
 	const [username, setUsername] = useState("");
 	const [password, setPassword] = useState("");
-	const navigate = useNavigate();
+	const { login } = useUser();
 
 	const loginMutation = useMutation({
 		mutationFn: loginUser,
 		onSuccess: (data) => {
-			if (data.success) {
-				navigate("/dashboard");
+			if (data.success && data.accessToken && data.refreshToken && data.userId && data.username) {
+				login(data.accessToken, data.refreshToken, {
+					id: data.userId,
+					username: data.username,
+				});
 			}
 		},
 	});

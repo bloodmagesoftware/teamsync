@@ -1,5 +1,7 @@
 # Agents instructions
 
+TeamSync is a team communication platform. In features similar to Slack. In philosophy and self-hosting similar to Campfire (by 37signals).
+
 Write modern Go and TypeScript code and adhere to best practices.
 
 ## Backend

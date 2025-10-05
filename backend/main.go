@@ -64,7 +64,7 @@ func ensureInitialInvitation(database *sql.DB) error {
 			return fmt.Errorf("failed to generate invitation code: %w", err)
 		}
 
-		_, err = queries.CreateInvitationCode(ctx, code)
+		_, err = queries.CreateInvitationCode(ctx, code, nil)
 		if err != nil {
 			return fmt.Errorf("failed to create invitation code: %w", err)
 		}

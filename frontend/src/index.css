@@ -2,3 +2,8 @@
 
 @import "tailwindcss";
 @import "@catppuccin/tailwindcss/mocha.css";
+
+button,
+a {
+	@apply cursor-pointer;
+}

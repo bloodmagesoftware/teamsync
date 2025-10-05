@@ -1,18 +1,36 @@
 // Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Login from "./Login";
+import { UserProvider } from "./UserContext";
+import Protected from "./Protected";
+import Chats from "./Chats";
 import Register from "./Register";
-import Dashboard from "./Dashboard";
+import Settings from "./Settings";
 
 function App() {
 	return (
-		<BrowserRouter>
-			<Routes>
-				<Route path="/" element={<Login />} />
-				<Route path="/register" element={<Register />} />
-				<Route path="/dashboard" element={<Dashboard />} />
-			</Routes>
-		</BrowserRouter>
+		<UserProvider>
+			<BrowserRouter>
+				<Routes>
+					<Route
+						path="/"
+						element={
+							<Protected>
+								<Chats />
+							</Protected>
+						}
+					/>
+					<Route path="/register" element={<Register />} />
+					<Route
+						path="/settings"
+						element={
+							<Protected>
+								<Settings />
+							</Protected>
+						}
+					/>
+				</Routes>
+			</BrowserRouter>
+		</UserProvider>
 	);
 }
 

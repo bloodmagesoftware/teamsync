@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
+import { useUser } from "./UserContext";
 
 interface RegisterRequest {
 	username: string;
@@ -13,6 +14,9 @@ interface AuthResponse {
 	success: boolean;
 	message?: string;
 	userId?: number;
+	username?: string;
+	accessToken?: string;
+	refreshToken?: string;
 }
 
 const registerUser = async (data: RegisterRequest): Promise<AuthResponse> => {
@@ -30,6 +34,7 @@ export default function Register() {
 	const [error, setError] = useState("");
 	const [searchParams] = useSearchParams();
 	const navigate = useNavigate();
+	const { login } = useUser();
 	const invitationCode = searchParams.get("invite");
 
 	useEffect(() => {
@@ -41,8 +46,12 @@ export default function Register() {
 	const registerMutation = useMutation({
 		mutationFn: registerUser,
 		onSuccess: (data) => {
-			if (data.success) {
-				navigate("/");
+			if (data.success && data.accessToken && data.refreshToken && data.userId && data.username) {
+				login(data.accessToken, data.refreshToken, {
+					id: data.userId,
+					username: data.username,
+				});
+				navigate("/dashboard");
 			}
 		},
 	});

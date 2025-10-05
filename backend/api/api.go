@@ -32,6 +32,9 @@ func New(db *sql.DB) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/auth/login", s.handleLogin)
 	mux.HandleFunc("/api/auth/register", s.handleRegister)
+	mux.Handle("/api/auth/me", auth.RequireAuth(db)(http.HandlerFunc(s.handleMe)))
+	mux.Handle("/api/invitations", auth.RequireAuth(db)(http.HandlerFunc(s.handleInvitations)))
+	mux.Handle("/api/invitations/delete", auth.RequireAuth(db)(http.HandlerFunc(s.handleDeleteInvitation)))
 
 	if frontendDevURL, ok := os.LookupEnv("FRONTEND_DEV_URL"); ok {
 		log.Printf("development mode: proxying frontend requests to %s", frontendDevURL)
@@ -141,9 +144,12 @@ type registerRequest struct {
 }
 
 type authResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message,omitempty"`
-	UserID  int64  `json:"userId,omitempty"`
+	Success      bool   `json:"success"`
+	Message      string `json:"message,omitempty"`
+	UserID       int64  `json:"userId,omitempty"`
+	Username     string `json:"username,omitempty"`
+	AccessToken  string `json:"accessToken,omitempty"`
+	RefreshToken string `json:"refreshToken,omitempty"`
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -174,8 +180,32 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tokenPair, err := auth.GenerateTokenPair()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(authResponse{Success: false, Message: "Server error"})
+		return
+	}
+
+	if err := queries.DeleteUserTokens(r.Context(), user.ID); err != nil {
+		log.Printf("warning: failed to delete old tokens: %v", err)
+	}
+
+	_, err = queries.CreateOAuthToken(r.Context(), user.ID, tokenPair.AccessToken, tokenPair.RefreshToken, tokenPair.AccessTokenExpiresAt, tokenPair.RefreshTokenExpiresAt)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(authResponse{Success: false, Message: "Server error"})
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(authResponse{Success: true, UserID: user.ID})
+	json.NewEncoder(w).Encode(authResponse{
+		Success:      true,
+		UserID:       user.ID,
+		Username:     user.Username,
+		AccessToken:  tokenPair.AccessToken,
+		RefreshToken: tokenPair.RefreshToken,
+	})
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
@@ -225,6 +255,149 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		log.Printf("warning: failed to delete invitation code: %v", err)
 	}
 
+	tokenPair, err := auth.GenerateTokenPair()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(authResponse{Success: false, Message: "Server error"})
+		return
+	}
+
+	_, err = queries.CreateOAuthToken(r.Context(), user.ID, tokenPair.AccessToken, tokenPair.RefreshToken, tokenPair.AccessTokenExpiresAt, tokenPair.RefreshTokenExpiresAt)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(authResponse{Success: false, Message: "Server error"})
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(authResponse{Success: true, UserID: user.ID})
+	json.NewEncoder(w).Encode(authResponse{
+		Success:      true,
+		UserID:       user.ID,
+		Username:     user.Username,
+		AccessToken:  tokenPair.AccessToken,
+		RefreshToken: tokenPair.RefreshToken,
+	})
+}
+
+type userResponse struct {
+	ID       int64  `json:"id"`
+	Username string `json:"username"`
+}
+
+func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	queries := db.New(s.db)
+	user, err := queries.GetUser(r.Context(), userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(userResponse{
+		ID:       user.ID,
+		Username: user.Username,
+	})
+}
+
+type invitationResponse struct {
+	ID        int64  `json:"id"`
+	Code      string `json:"code"`
+	CreatedAt string `json:"createdAt"`
+}
+
+func (s *Server) handleInvitations(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	queries := db.New(s.db)
+
+	switch r.Method {
+	case http.MethodGet:
+		invitations, err := queries.ListInvitationsByUser(r.Context(), &userID)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		response := make([]invitationResponse, len(invitations))
+		for i, inv := range invitations {
+			response[i] = invitationResponse{
+				ID:        inv.ID,
+				Code:      inv.Code,
+				CreatedAt: inv.CreatedAt.Format(time.RFC3339),
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+
+	case http.MethodPost:
+		code, err := auth.GenerateInvitationCode()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		invitation, err := queries.CreateInvitationCode(r.Context(), code, &userID)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(invitationResponse{
+			ID:        invitation.ID,
+			Code:      invitation.Code,
+			CreatedAt: invitation.CreatedAt.Format(time.RFC3339),
+		})
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+type deleteInvitationRequest struct {
+	ID int64 `json:"id"`
+}
+
+func (s *Server) handleDeleteInvitation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	var req deleteInvitationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	queries := db.New(s.db)
+	if err := queries.DeleteInvitationById(r.Context(), req.ID, &userID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }

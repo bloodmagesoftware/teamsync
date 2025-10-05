@@ -22,10 +22,16 @@ SELECT * FROM users WHERE username = ? LIMIT 1;
 SELECT COUNT(*) FROM users;
 
 -- name: CreateInvitationCode :one
-INSERT INTO invitation_codes (code) VALUES (?) RETURNING *;
+INSERT INTO invitation_codes (code, created_by) VALUES (?, ?) RETURNING *;
 
 -- name: GetInvitationByCode :one
 SELECT * FROM invitation_codes WHERE code = ? LIMIT 1;
 
 -- name: DeleteInvitationCode :exec
 DELETE FROM invitation_codes WHERE code = ?;
+
+-- name: ListInvitationsByUser :many
+SELECT * FROM invitation_codes WHERE created_by = ? ORDER BY created_at DESC;
+
+-- name: DeleteInvitationById :exec
+DELETE FROM invitation_codes WHERE id = ? AND created_by = ?;
