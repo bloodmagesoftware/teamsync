@@ -1,10 +1,12 @@
 // Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useUser } from "./UserContext";
 
 type SettingsCategory = "profile" | "invitations" | null;
 
 export default function Settings() {
+	const navigate = useNavigate();
 	const [selectedCategory, setSelectedCategory] =
 		useState<SettingsCategory>(null);
 
@@ -33,7 +35,15 @@ export default function Settings() {
 			<aside
 				className={`${selectedCategory ? "hidden md:block" : "block"} w-full md:w-64 bg-ctp-surface0 border-r border-surface1 p-4`}
 			>
-				<h1 className="text-xl font-bold mb-6">Settings</h1>
+				<div className="flex items-center justify-between mb-6">
+					<h1 className="text-xl font-bold">Settings</h1>
+					<button
+						onClick={() => navigate("/")}
+						className="px-3 py-1 bg-ctp-surface1 text-ctp-text rounded hover:bg-ctp-surface2 text-sm"
+					>
+						← Chats
+					</button>
+				</div>
 				<nav>
 					<ul className="space-y-2">
 						{categories.map((category) => (
@@ -72,12 +82,75 @@ export default function Settings() {
 }
 
 function ProfileSettings() {
-	const { user } = useUser();
+	const { user, updateUser, checkAuth } = useUser();
+	const [uploading, setUploading] = useState(false);
+
+	const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+
+		if (!file.type.startsWith("image/")) {
+			alert("Please select an image file");
+			return;
+		}
+
+		setUploading(true);
+		try {
+			const formData = new FormData();
+			formData.append("image", file);
+
+			const accessToken = localStorage.getItem("accessToken");
+			const response = await fetch("/api/profile/image", {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+				},
+				body: formData,
+			});
+
+			if (response.ok) {
+				await checkAuth();
+			} else {
+				const error = await response.json();
+				alert(error.error || "Failed to upload image");
+			}
+		} catch (error) {
+			console.error("Failed to upload profile image:", error);
+			alert("Failed to upload image");
+		} finally {
+			setUploading(false);
+		}
+	};
 
 	return (
 		<div>
 			<h2 className="text-2xl font-bold mb-4">Profile</h2>
-			<p>Username: {user?.username}</p>
+			<p className="mb-4">Username: {user?.username}</p>
+			
+			<div className="mb-4">
+				<h3 className="text-lg font-semibold mb-2">Profile Picture</h3>
+				{user?.profileImageUrl ? (
+					<img
+						src={user.profileImageUrl}
+						alt="Profile"
+						className="w-32 h-32 rounded-full object-cover mb-4"
+					/>
+				) : (
+					<div className="w-32 h-32 rounded-full bg-ctp-surface1 flex items-center justify-center text-4xl font-bold mb-4">
+						{user?.username.charAt(0).toUpperCase()}
+					</div>
+				)}
+				<label className="px-4 py-2 bg-ctp-blue text-ctp-base rounded hover:bg-ctp-sapphire cursor-pointer inline-block">
+					{uploading ? "Uploading..." : "Upload New Picture"}
+					<input
+						type="file"
+						accept="image/*"
+						onChange={handleImageUpload}
+						disabled={uploading}
+						className="hidden"
+					/>
+				</label>
+			</div>
 		</div>
 	);
 }

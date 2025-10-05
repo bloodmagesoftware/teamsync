@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 export interface User {
 	id: number;
 	username: string;
+	profileImageUrl?: string | null;
 }
 
 interface UserContextType {
@@ -13,6 +14,7 @@ interface UserContextType {
 	login: (accessToken: string, refreshToken: string, user: User) => void;
 	logout: () => void;
 	checkAuth: () => Promise<void>;
+	updateUser: (user: User) => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -31,6 +33,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
 		localStorage.removeItem("accessToken");
 		localStorage.removeItem("refreshToken");
 		setUser(null);
+	};
+
+	const updateUser = (user: User) => {
+		setUser(user);
 	};
 
 	const checkAuth = async () => {
@@ -66,7 +72,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 	}, []);
 
 	return (
-		<UserContext.Provider value={{ user, isLoading, login, logout, checkAuth }}>
+		<UserContext.Provider value={{ user, isLoading, login, logout, checkAuth, updateUser }}>
 			{children}
 		</UserContext.Provider>
 	);

@@ -35,3 +35,9 @@ SELECT * FROM invitation_codes WHERE created_by = ? ORDER BY created_at DESC;
 
 -- name: DeleteInvitationById :exec
 DELETE FROM invitation_codes WHERE id = ? AND created_by = ?;
+
+-- name: UpdateUserProfileImage :exec
+UPDATE users SET profile_image = ?, profile_image_hash = ? WHERE id = ?;
+
+-- name: GetUserProfileImage :one
+SELECT profile_image FROM users WHERE id = ? LIMIT 1;

@@ -3,6 +3,8 @@ module github.com/bloodmagesoftware/teamsync
 go 1.25.1
 
 require (
+	github.com/chai2010/webp v1.4.0
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	golang.org/x/crypto v0.42.0
 	modernc.org/sqlite v1.39.0
 )

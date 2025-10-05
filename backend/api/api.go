@@ -2,10 +2,16 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"log"
 	"net/http"
@@ -17,6 +23,8 @@ import (
 
 	"github.com/bloodmagesoftware/teamsync/auth"
 	"github.com/bloodmagesoftware/teamsync/db"
+	"github.com/chai2010/webp"
+	"github.com/nfnt/resize"
 )
 
 type Server struct {
@@ -35,6 +43,8 @@ func New(db *sql.DB) *Server {
 	mux.Handle("/api/auth/me", auth.RequireAuth(db)(http.HandlerFunc(s.handleMe)))
 	mux.Handle("/api/invitations", auth.RequireAuth(db)(http.HandlerFunc(s.handleInvitations)))
 	mux.Handle("/api/invitations/delete", auth.RequireAuth(db)(http.HandlerFunc(s.handleDeleteInvitation)))
+	mux.Handle("/api/profile/image", auth.RequireAuth(db)(http.HandlerFunc(s.handleProfileImageUpload)))
+	mux.HandleFunc("/api/profile/image/", s.handleProfileImageServe)
 
 	if frontendDevURL, ok := os.LookupEnv("FRONTEND_DEV_URL"); ok {
 		log.Printf("development mode: proxying frontend requests to %s", frontendDevURL)
@@ -280,8 +290,9 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 type userResponse struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
+	ID              int64   `json:"id"`
+	Username        string  `json:"username"`
+	ProfileImageURL *string `json:"profileImageUrl"`
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
@@ -303,10 +314,17 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var profileImageURL *string
+	if user.ProfileImageHash != nil {
+		url := fmt.Sprintf("/api/profile/image/%s", *user.ProfileImageHash)
+		profileImageURL = &url
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(userResponse{
-		ID:       user.ID,
-		Username: user.Username,
+		ID:              user.ID,
+		Username:        user.Username,
+		ProfileImageURL: profileImageURL,
 	})
 }
 
@@ -400,4 +418,132 @@ func (s *Server) handleDeleteInvitation(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+}
+
+func (s *Server) handleProfileImageUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "File too large"})
+		return
+	}
+
+	file, _, err := r.FormFile("image")
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid file"})
+		return
+	}
+	defer file.Close()
+
+	img, _, err := image.Decode(file)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid image format"})
+		return
+	}
+
+	bounds := img.Bounds()
+	size := bounds.Dx()
+	if bounds.Dy() < size {
+		size = bounds.Dy()
+	}
+
+	offsetX := (bounds.Dx() - size) / 2
+	offsetY := (bounds.Dy() - size) / 2
+
+	type SubImager interface {
+		SubImage(r image.Rectangle) image.Image
+	}
+
+	croppedImg := img.(SubImager).SubImage(image.Rect(
+		bounds.Min.X+offsetX,
+		bounds.Min.Y+offsetY,
+		bounds.Min.X+offsetX+size,
+		bounds.Min.Y+offsetY+size,
+	))
+
+	targetSize := 512
+	if size < targetSize {
+		targetSize = size
+	}
+
+	resizedImg := resize.Resize(uint(targetSize), uint(targetSize), croppedImg, resize.Lanczos3)
+
+	var buf bytes.Buffer
+	if err := webp.Encode(&buf, resizedImg, &webp.Options{Lossless: false, Quality: 85}); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to process image"})
+		return
+	}
+
+	imageData := buf.Bytes()
+	hash := sha256.Sum256(imageData)
+	hashStr := hex.EncodeToString(hash[:])
+
+	queries := db.New(s.db)
+	if err := queries.UpdateUserProfileImage(r.Context(), imageData, &hashStr, userID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to save image"})
+		return
+	}
+
+	profileImageURL := fmt.Sprintf("/api/profile/image/%s", hashStr)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"success":         "true",
+		"profileImageUrl": profileImageURL,
+	})
+}
+
+func (s *Server) handleProfileImageServe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	hash := strings.TrimPrefix(r.URL.Path, "/api/profile/image/")
+	if hash == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	queries := db.New(s.db)
+	users, err := queries.ListUsers(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	var imageData []byte
+	for _, user := range users {
+		if user.ProfileImageHash != nil && *user.ProfileImageHash == hash {
+			imageData, err = queries.GetUserProfileImage(r.Context(), user.ID)
+			if err != nil {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			break
+		}
+	}
+
+	if len(imageData) == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "image/webp")
+	w.Header().Set("Cache-Control", "public, max-age=2592000")
+	w.Write(imageData)
 }
