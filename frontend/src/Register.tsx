@@ -46,12 +46,18 @@ export default function Register() {
 	const registerMutation = useMutation({
 		mutationFn: registerUser,
 		onSuccess: (data) => {
-			if (data.success && data.accessToken && data.refreshToken && data.userId && data.username) {
+			if (
+				data.success &&
+				data.accessToken &&
+				data.refreshToken &&
+				data.userId &&
+				data.username
+			) {
 				login(data.accessToken, data.refreshToken, {
 					id: data.userId,
 					username: data.username,
 				});
-				navigate("/dashboard");
+				navigate("/");
 			}
 		},
 	});

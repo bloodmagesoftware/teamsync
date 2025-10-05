@@ -155,12 +155,13 @@ type registerRequest struct {
 }
 
 type authResponse struct {
-	Success      bool   `json:"success"`
-	Message      string `json:"message,omitempty"`
-	UserID       int64  `json:"userId,omitempty"`
-	Username     string `json:"username,omitempty"`
-	AccessToken  string `json:"accessToken,omitempty"`
-	RefreshToken string `json:"refreshToken,omitempty"`
+	Success         bool    `json:"success"`
+	Message         string  `json:"message,omitempty"`
+	UserID          int64   `json:"userId,omitempty"`
+	Username        string  `json:"username,omitempty"`
+	ProfileImageURL *string `json:"profileImageUrl,omitempty"`
+	AccessToken     string  `json:"accessToken,omitempty"`
+	RefreshToken    string  `json:"refreshToken,omitempty"`
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -209,13 +210,20 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var profileImageURL *string
+	if user.ProfileImageHash != nil {
+		url := fmt.Sprintf("/api/profile/image/%s", *user.ProfileImageHash)
+		profileImageURL = &url
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(authResponse{
-		Success:      true,
-		UserID:       user.ID,
-		Username:     user.Username,
-		AccessToken:  tokenPair.AccessToken,
-		RefreshToken: tokenPair.RefreshToken,
+		Success:         true,
+		UserID:          user.ID,
+		Username:        user.Username,
+		ProfileImageURL: profileImageURL,
+		AccessToken:     tokenPair.AccessToken,
+		RefreshToken:    tokenPair.RefreshToken,
 	})
 }
 
@@ -280,13 +288,20 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var profileImageURL *string
+	if user.ProfileImageHash != nil {
+		url := fmt.Sprintf("/api/profile/image/%s", *user.ProfileImageHash)
+		profileImageURL = &url
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(authResponse{
-		Success:      true,
-		UserID:       user.ID,
-		Username:     user.Username,
-		AccessToken:  tokenPair.AccessToken,
-		RefreshToken: tokenPair.RefreshToken,
+		Success:         true,
+		UserID:          user.ID,
+		Username:        user.Username,
+		ProfileImageURL: profileImageURL,
+		AccessToken:     tokenPair.AccessToken,
+		RefreshToken:    tokenPair.RefreshToken,
 	})
 }
 

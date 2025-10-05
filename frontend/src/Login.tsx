@@ -13,6 +13,7 @@ interface AuthResponse {
 	message?: string;
 	userId?: number;
 	username?: string;
+	profileImageUrl?: string | null;
 	accessToken?: string;
 	refreshToken?: string;
 }
@@ -38,6 +39,7 @@ export default function Login() {
 				login(data.accessToken, data.refreshToken, {
 					id: data.userId,
 					username: data.username,
+					profileImageUrl: data.profileImageUrl,
 				});
 			}
 		},
