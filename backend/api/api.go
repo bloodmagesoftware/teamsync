@@ -45,6 +45,7 @@ func New(db *sql.DB) *Server {
 	mux.Handle("/api/invitations/delete", auth.RequireAuth(db)(http.HandlerFunc(s.handleDeleteInvitation)))
 	mux.Handle("/api/profile/image", auth.RequireAuth(db)(http.HandlerFunc(s.handleProfileImageUpload)))
 	mux.HandleFunc("/api/profile/image/", s.handleProfileImageServe)
+	mux.Handle("/api/settings/chat", auth.RequireAuth(db)(http.HandlerFunc(s.handleChatSettings)))
 
 	if frontendDevURL, ok := os.LookupEnv("FRONTEND_DEV_URL"); ok {
 		log.Printf("development mode: proxying frontend requests to %s", frontendDevURL)
@@ -546,4 +547,64 @@ func (s *Server) handleProfileImageServe(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "image/webp")
 	w.Header().Set("Cache-Control", "public, max-age=2592000")
 	w.Write(imageData)
+}
+
+type chatSettingsResponse struct {
+	EnterSendsMessage bool `json:"enterSendsMessage"`
+}
+
+type updateChatSettingsRequest struct {
+	EnterSendsMessage bool `json:"enterSendsMessage"`
+}
+
+func (s *Server) handleChatSettings(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	queries := db.New(s.db)
+
+	switch r.Method {
+	case http.MethodGet:
+		settings, err := queries.GetUserSettings(r.Context(), userID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(chatSettingsResponse{
+					EnterSendsMessage: false,
+				})
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(chatSettingsResponse{
+			EnterSendsMessage: settings.EnterSendsMessage,
+		})
+
+	case http.MethodPost:
+		var req updateChatSettingsRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		settings, err := queries.UpsertUserSettings(r.Context(), userID, req.EnterSendsMessage)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(chatSettingsResponse{
+			EnterSendsMessage: settings.EnterSendsMessage,
+		})
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
 }

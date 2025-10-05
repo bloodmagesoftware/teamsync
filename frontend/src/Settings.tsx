@@ -2,8 +2,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "./UserContext";
+import { ArrowLeft } from "react-feather";
 
-type SettingsCategory = "profile" | "invitations" | null;
+type SettingsCategory = "profile" | "invitations" | "chat" | null;
 
 export default function Settings() {
 	const navigate = useNavigate();
@@ -13,6 +14,7 @@ export default function Settings() {
 	const categories = [
 		{ id: "profile" as const, label: "Profile" },
 		{ id: "invitations" as const, label: "Invitations" },
+		{ id: "chat" as const, label: "Chat" },
 	];
 
 	const renderCategoryContent = () => {
@@ -21,6 +23,8 @@ export default function Settings() {
 				return <ProfileSettings />;
 			case "invitations":
 				return <InvitationsSettings />;
+			case "chat":
+				return <ChatSettings />;
 			default:
 				return (
 					<div className="hidden md:flex items-center justify-center h-full text-ctp-subtext0">
@@ -28,21 +32,143 @@ export default function Settings() {
 					</div>
 				);
 		}
+
+		function ChatSettings() {
+			const [enterSendsMessage, setEnterSendsMessage] = useState(false);
+			const [loading, setLoading] = useState(true);
+			const [saving, setSaving] = useState(false);
+
+			useEffect(() => {
+				fetchSettings();
+			}, []);
+
+			const fetchSettings = async () => {
+				try {
+					const accessToken = localStorage.getItem("accessToken");
+					const response = await fetch("/api/settings/chat", {
+						headers: {
+							Authorization: `Bearer ${accessToken}`,
+						},
+					});
+
+					if (response.ok) {
+						const data = await response.json();
+						setEnterSendsMessage(data.enterSendsMessage);
+					}
+				} catch (error) {
+					console.error("Failed to fetch chat settings:", error);
+				} finally {
+					setLoading(false);
+				}
+			};
+
+			const updateSettings = async (value: boolean) => {
+				setSaving(true);
+				try {
+					const accessToken = localStorage.getItem("accessToken");
+					const response = await fetch("/api/settings/chat", {
+						method: "POST",
+						headers: {
+							Authorization: `Bearer ${accessToken}`,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({ enterSendsMessage: value }),
+					});
+
+					if (response.ok) {
+						const data = await response.json();
+						setEnterSendsMessage(data.enterSendsMessage);
+					}
+				} catch (error) {
+					console.error("Failed to update chat settings:", error);
+				} finally {
+					setSaving(false);
+				}
+			};
+
+			const handleToggle = () => {
+				const newValue = !enterSendsMessage;
+				setEnterSendsMessage(newValue);
+				updateSettings(newValue);
+			};
+
+			if (loading) {
+				return <div>Loading...</div>;
+			}
+
+			return (
+				<div>
+					<h2 className="text-2xl font-bold mb-4">Chat Settings</h2>
+
+					<div className="space-y-4">
+						<label className="flex items-start justify-between p-4 bg-ctp-surface0 rounded">
+							<div className="flex-1">
+								<h3 className="font-semibold mb-2">Enter Key Behavior</h3>
+								<p className="text-sm text-ctp-subtext0 mb-2">
+									{enterSendsMessage ? (
+										<>
+											When active: pressing{" "}
+											<kbd className="px-1 py-0.5 bg-ctp-surface1 rounded text-xs">
+												Enter
+											</kbd>{" "}
+											will send your message and pressing{" "}
+											<kbd className="px-1 py-0.5 bg-ctp-surface1 rounded text-xs">
+												Shift+Enter
+											</kbd>{" "}
+											will write a newline.
+										</>
+									) : (
+										<>
+											When inactive: pressing{" "}
+											<kbd className="px-1 py-0.5 bg-ctp-surface1 rounded text-xs">
+												Enter
+											</kbd>{" "}
+											will write a newline and{" "}
+											<kbd className="px-1 py-0.5 bg-ctp-surface1 rounded text-xs">
+												Ctrl+Enter
+											</kbd>{" "}
+											will send the message.
+										</>
+									)}
+								</p>
+								<p className="text-xs text-ctp-subtext1">
+									Note: On touch devices (like smartphones), Enter will never
+									send.
+								</p>
+							</div>
+							<button
+								onClick={handleToggle}
+								disabled={saving}
+								className={`ml-4 relative w-12 h-6 rounded-full transition-colors ${
+									enterSendsMessage ? "bg-ctp-blue" : "bg-ctp-surface2"
+								} ${saving ? "opacity-50" : ""}`}
+							>
+								<div
+									className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+										enterSendsMessage ? "translate-x-6" : ""
+									}`}
+								/>
+							</button>
+						</label>
+					</div>
+				</div>
+			);
+		}
 	};
 
 	return (
 		<div className="flex h-screen">
 			<aside
-				className={`${selectedCategory ? "hidden md:block" : "block"} w-full md:w-64 bg-ctp-surface0 border-r border-surface1 p-4`}
+				className={`${selectedCategory ? "hidden md:block" : "block"} w-full md:w-64 bg-ctp-mantle p-4`}
 			>
-				<div className="flex items-center justify-between mb-6">
-					<h1 className="text-xl font-bold">Settings</h1>
+				<div className="flex items-center justify-left gap-2 mb-6">
 					<button
 						onClick={() => navigate("/")}
 						className="px-3 py-1 bg-ctp-surface1 text-ctp-text rounded hover:bg-ctp-surface2 text-sm"
 					>
-						← Chats
+						<ArrowLeft className="w-4 h-4" />
 					</button>
+					<h1 className="text-xl font-bold">Settings</h1>
 				</div>
 				<nav>
 					<ul className="space-y-2">
@@ -126,7 +252,7 @@ function ProfileSettings() {
 		<div>
 			<h2 className="text-2xl font-bold mb-4">Profile</h2>
 			<p className="mb-4">Username: {user?.username}</p>
-			
+
 			<div className="mb-4">
 				<h3 className="text-lg font-semibold mb-2">Profile Picture</h3>
 				{user?.profileImageUrl ? (
