@@ -8,6 +8,7 @@ type SettingsCategory = "profile" | "invitations" | "chat" | null;
 
 export default function Settings() {
 	const navigate = useNavigate();
+	const { logout } = useUser();
 	const [selectedCategory, setSelectedCategory] =
 		useState<SettingsCategory>(null);
 
@@ -16,6 +17,11 @@ export default function Settings() {
 		{ id: "invitations" as const, label: "Invitations" },
 		{ id: "chat" as const, label: "Chat" },
 	];
+
+	const handleLogout = () => {
+		logout();
+		navigate("/");
+	};
 
 	const renderCategoryContent = () => {
 		switch (selectedCategory) {
@@ -186,6 +192,14 @@ export default function Settings() {
 								</button>
 							</li>
 						))}
+						<li>
+							<button
+								onClick={handleLogout}
+								className="w-full text-left px-4 py-2 rounded text-ctp-red hover:bg-ctp-red hover:text-ctp-base"
+							>
+								Logout
+							</button>
+						</li>
 					</ul>
 				</nav>
 			</aside>

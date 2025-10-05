@@ -3,17 +3,12 @@ import { useState, useEffect, useRef, type KeyboardEvent } from "react";
 import { useUser } from "./UserContext";
 import { useNavigate } from "react-router-dom";
 import Avatar from "./Avatar";
-import { LogOut, Settings } from "react-feather";
+import { ArrowLeft } from "react-feather";
 
 export default function Chats() {
-	const { user, logout } = useUser();
+	const { user } = useUser();
 	const navigate = useNavigate();
 	const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
-
-	const handleLogout = () => {
-		logout();
-		navigate("/");
-	};
 
 	const mockChats = [
 		{ id: 1, name: "General", lastMessage: "Hello team!" },
@@ -23,7 +18,23 @@ export default function Chats() {
 
 	return (
 		<div className="flex h-screen bg-ctp-base text-ctp-text">
-			<aside className="w-60 bg-ctp-mantle flex flex-col">
+			<aside
+				className={`${selectedChatId ? "hidden md:flex" : "flex"} w-full md:w-60 bg-ctp-mantle flex-col`}
+			>
+				<div className="p-4 md:hidden flex items-center justify-between border-b border-ctp-surface0">
+					<h1 className="text-xl font-bold">TeamSync</h1>
+					<button
+						onClick={() => navigate("/settings")}
+						className="p-2 hover:bg-ctp-surface0 rounded transition-colors"
+					>
+						<Avatar size="sm" />
+					</button>
+				</div>
+
+				<div className="hidden md:block p-4 border-b border-ctp-surface0">
+					<h1 className="text-xl font-bold">TeamSync</h1>
+				</div>
+
 				<div className="flex-1 overflow-y-auto p-2">
 					{mockChats.map((chat) => (
 						<div
@@ -40,34 +51,58 @@ export default function Chats() {
 						</div>
 					))}
 				</div>
-				<div className="p-2 bg-ctp-surface0 flex items-center justify-between">
+
+				<div className="hidden md:flex p-2 bg-ctp-surface0 items-center justify-between">
 					<div className="flex items-center gap-2 flex-1 min-w-0">
 						<Avatar size="sm" />
 						<span className="text-sm font-medium truncate">
 							{user?.username}
 						</span>
 					</div>
-					<div className="flex gap-1">
-						<button
-							onClick={() => navigate("/settings")}
-							className="p-2 hover:bg-ctp-surface1 rounded transition-colors"
-							title="Settings"
+					<button
+						onClick={() => navigate("/settings")}
+						className="p-2 hover:bg-ctp-surface1 rounded transition-colors"
+						title="Settings"
+					>
+						<svg
+							className="w-4 h-4"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
 						>
-							<Settings className="w-4 h-4" />
-						</button>
-						<button
-							onClick={handleLogout}
-							className="p-2 hover:bg-ctp-surface1 rounded transition-colors"
-							title="Logout"
-						>
-							<LogOut className="w-4 h-4" />
-						</button>
-					</div>
+							<path
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								strokeWidth={2}
+								d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+							/>
+							<path
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								strokeWidth={2}
+								d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+							/>
+						</svg>
+					</button>
 				</div>
 			</aside>
-			<main className="flex-1 bg-ctp-base flex flex-col">
+
+			<main
+				className={`${selectedChatId ? "flex" : "hidden md:flex"} flex-1 bg-ctp-base flex-col`}
+			>
 				{selectedChatId ? (
 					<>
+						<div className="p-4 md:hidden border-b border-ctp-surface0 flex items-center gap-3">
+							<button
+								onClick={() => setSelectedChatId(null)}
+								className="p-2 hover:bg-ctp-surface0 rounded transition-colors"
+							>
+								<ArrowLeft className="w-5 h-5" />
+							</button>
+							<h2 className="text-lg font-semibold">
+								{mockChats.find((c) => c.id === selectedChatId)?.name}
+							</h2>
+						</div>
 						<div className="flex-1 overflow-y-auto p-4"></div>
 						<MessageInput />
 					</>
