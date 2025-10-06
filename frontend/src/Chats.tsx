@@ -46,6 +46,7 @@ export default function Chats() {
 	const [showNewConversation, setShowNewConversation] = useState(false);
 	const [hasOlderMessages, setHasOlderMessages] = useState(true);
 	const [loadingOlder, setLoadingOlder] = useState(false);
+	const messagesContainerRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		const initializeApp = async () => {
@@ -62,6 +63,41 @@ export default function Chats() {
 		};
 	}, []);
 
+	const shouldScrollToBottom = useRef(false);
+
+	const checkShouldScroll = () => {
+		const container = messagesContainerRef.current;
+		if (!container) return false;
+
+		const scrollThreshold = 32;
+		const distanceFromBottom =
+			container.scrollHeight - container.scrollTop - container.clientHeight;
+
+		return distanceFromBottom <= scrollThreshold;
+	};
+
+	const scrollToBottom = () => {
+		const container = messagesContainerRef.current;
+		if (!container) return;
+
+		container.scrollTo({
+			top: container.scrollHeight,
+			behavior: "smooth",
+		});
+	};
+
+	useEffect(() => {
+		if (shouldScrollToBottom.current) {
+			scrollToBottom();
+			shouldScrollToBottom.current = false;
+		} else if (messages.length > 0 && messagesContainerRef.current) {
+			const container = messagesContainerRef.current;
+			if (container.scrollTop === 0) {
+				container.scrollTop = container.scrollHeight;
+			}
+		}
+	}, [messages]);
+
 	useEffect(() => {
 		const handleEvent = async (event: Event) => {
 			if (event.type === "message.new") {
@@ -69,6 +105,7 @@ export default function Chats() {
 				await messageCache.saveMessages([msg]);
 
 				if (msg.conversationId === selectedChatId) {
+					shouldScrollToBottom.current = checkShouldScroll();
 					setMessages((prev) => [...prev, msg]);
 					await updateReadState(msg.conversationId, msg.seq);
 				} else {
@@ -94,6 +131,10 @@ export default function Chats() {
 	useEffect(() => {
 		if (selectedChatId) {
 			loadMessagesForConversation(selectedChatId);
+			const container = messagesContainerRef.current;
+			if (container) {
+				container.scrollTop = container.scrollHeight;
+			}
 		}
 	}, [selectedChatId]);
 
@@ -247,6 +288,7 @@ export default function Chats() {
 					lastSyncTimestamp: newMessage.createdAt,
 				});
 
+				shouldScrollToBottom.current = checkShouldScroll();
 				setMessages((prev) => [...prev, newMessage]);
 
 				setConversations((prev) => {
@@ -431,7 +473,10 @@ export default function Chats() {
 								{getConversationName(selectedConversation)}
 							</h2>
 						</div>
-						<div className="flex-1 overflow-y-auto p-4 space-y-4">
+						<div
+							ref={messagesContainerRef}
+							className="flex-1 overflow-y-auto p-4 space-y-4"
+						>
 							{hasOlderMessages && messages.length > 0 && (
 								<div className="flex justify-center mb-4">
 									<button
