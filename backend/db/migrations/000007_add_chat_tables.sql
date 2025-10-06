@@ -27,7 +27,7 @@ CREATE TABLE messages (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     edited_at DATETIME,
     deleted_at DATETIME,
-    content_type TEXT NOT NULL DEFAULT 'text',
+    content_type TEXT NOT NULL DEFAULT 'text/plain',
     body TEXT NOT NULL,
     reply_to_id INTEGER,
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,

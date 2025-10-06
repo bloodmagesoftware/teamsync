@@ -8,4 +8,8 @@
 	a {
 		@apply cursor-pointer;
 	}
+
+	.hljs {
+		background-color: var(--catppuccin-color-crust) !important;
+	}
 }

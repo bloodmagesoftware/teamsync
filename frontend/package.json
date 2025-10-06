@@ -11,10 +11,14 @@
 		"preview": "vite preview"
 	},
 	"dependencies": {
+		"@catppuccin/highlightjs": "^1.0.1",
 		"@tanstack/react-query": "^5.90.2",
 		"react": "^19.1.1",
 		"react-dom": "^19.1.1",
-		"react-router-dom": "^7.9.3"
+		"react-markdown": "^10.1.0",
+		"react-router-dom": "^7.9.3",
+		"rehype-highlight": "^7.0.2",
+		"remark-gfm": "^4.0.1"
 	},
 	"devDependencies": {
 		"@catppuccin/tailwindcss": "^1.0.0",

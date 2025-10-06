@@ -374,7 +374,13 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message, err := tx.CreateMessage(r.Context(), conversationID, conv.LastMessageSeq, userID, "text", req.Body, req.ReplyToID)
+	contentType := "text/plain"
+	settings, err := s.queries.GetUserSettings(r.Context(), userID)
+	if err == nil && settings.MarkdownEnabled {
+		contentType = "text/markdown"
+	}
+
+	message, err := tx.CreateMessage(r.Context(), conversationID, conv.LastMessageSeq, userID, contentType, req.Body, req.ReplyToID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return

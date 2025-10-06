@@ -41,6 +41,7 @@ export default function Settings() {
 
 		function ChatSettings() {
 			const [enterSendsMessage, setEnterSendsMessage] = useState(false);
+			const [markdownEnabled, setMarkdownEnabled] = useState(true);
 			const [loading, setLoading] = useState(true);
 			const [saving, setSaving] = useState(false);
 
@@ -60,6 +61,7 @@ export default function Settings() {
 					if (response.ok) {
 						const data = await response.json();
 						setEnterSendsMessage(data.enterSendsMessage);
+						setMarkdownEnabled(data.markdownEnabled);
 					}
 				} catch (error) {
 					console.error("Failed to fetch chat settings:", error);
@@ -68,7 +70,7 @@ export default function Settings() {
 				}
 			};
 
-			const updateSettings = async (value: boolean) => {
+			const updateEnterSendsMessage = async (value: boolean) => {
 				setSaving(true);
 				try {
 					const accessToken = localStorage.getItem("accessToken");
@@ -84,6 +86,7 @@ export default function Settings() {
 					if (response.ok) {
 						const data = await response.json();
 						setEnterSendsMessage(data.enterSendsMessage);
+						setMarkdownEnabled(data.markdownEnabled);
 					}
 				} catch (error) {
 					console.error("Failed to update chat settings:", error);
@@ -92,10 +95,41 @@ export default function Settings() {
 				}
 			};
 
-			const handleToggle = () => {
+			const updateMarkdownEnabled = async (value: boolean) => {
+				setSaving(true);
+				try {
+					const accessToken = localStorage.getItem("accessToken");
+					const response = await fetch("/api/settings/chat", {
+						method: "POST",
+						headers: {
+							Authorization: `Bearer ${accessToken}`,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({ markdownEnabled: value }),
+					});
+
+					if (response.ok) {
+						const data = await response.json();
+						setEnterSendsMessage(data.enterSendsMessage);
+						setMarkdownEnabled(data.markdownEnabled);
+					}
+				} catch (error) {
+					console.error("Failed to update chat settings:", error);
+				} finally {
+					setSaving(false);
+				}
+			};
+
+			const handleEnterToggle = () => {
 				const newValue = !enterSendsMessage;
 				setEnterSendsMessage(newValue);
-				updateSettings(newValue);
+				updateEnterSendsMessage(newValue);
+			};
+
+			const handleMarkdownToggle = () => {
+				const newValue = !markdownEnabled;
+				setMarkdownEnabled(newValue);
+				updateMarkdownEnabled(newValue);
 			};
 
 			if (loading) {
@@ -107,6 +141,38 @@ export default function Settings() {
 					<h2 className="text-2xl font-bold mb-4">Chat Settings</h2>
 
 					<div className="space-y-4">
+						<div className="flex items-start justify-between p-4 bg-ctp-surface0 rounded">
+							<div className="flex-1">
+								<h3 className="font-semibold mb-2">Markdown Formatting</h3>
+								<p className="text-sm text-ctp-subtext0 mb-2">
+									{markdownEnabled ? (
+										<>
+											When active: your messages will be rendered as Markdown with
+											syntax highlighting for code blocks.
+										</>
+									) : (
+										<>
+											When inactive: your messages will be displayed as plain text
+											with preserved whitespace.
+										</>
+									)}
+								</p>
+							</div>
+							<button
+								onClick={handleMarkdownToggle}
+								disabled={saving}
+								className={`ml-4 relative w-12 h-6 rounded-full transition-colors ${
+									markdownEnabled ? "bg-ctp-blue" : "bg-ctp-surface2"
+								} ${saving ? "opacity-50" : ""}`}
+							>
+								<div
+									className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+										markdownEnabled ? "translate-x-6" : ""
+									}`}
+								/>
+							</button>
+						</div>
+
 						<div className="flex items-start justify-between p-4 bg-ctp-surface0 rounded">
 							<div className="flex-1">
 								<h3 className="font-semibold mb-2">Enter Key Behavior</h3>
@@ -143,7 +209,7 @@ export default function Settings() {
 								</p>
 							</div>
 							<button
-								onClick={handleToggle}
+								onClick={handleEnterToggle}
 								disabled={saving}
 								className={`ml-4 relative w-12 h-6 rounded-full transition-colors ${
 									enterSendsMessage ? "bg-ctp-blue" : "bg-ctp-surface2"

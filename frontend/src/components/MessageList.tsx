@@ -3,6 +3,7 @@ import { ArrowLeft } from "react-feather";
 import Avatar from "../Avatar";
 import type { Conversation, Message } from "../chatUtils";
 import { getConversationName, formatMessageTime } from "../chatUtils";
+import { MessageContent } from "./MessageContent";
 
 export function MessageList({
 	conversation,
@@ -68,8 +69,8 @@ export function MessageList({
 								{formatMessageTime(msg.createdAt)}
 							</span>
 						</div>
-						<div className="text-ctp-text whitespace-pre col-start-2">
-							{msg.body}
+						<div className="col-start-2">
+							<MessageContent body={msg.body} contentType={msg.contentType} />
 						</div>
 					</div>
 				))}

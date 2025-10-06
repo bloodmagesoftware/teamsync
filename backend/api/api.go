@@ -632,10 +632,12 @@ func (s *Server) handleProfileImageServe(w http.ResponseWriter, r *http.Request)
 
 type chatSettingsResponse struct {
 	EnterSendsMessage bool `json:"enterSendsMessage"`
+	MarkdownEnabled   bool `json:"markdownEnabled"`
 }
 
 type updateChatSettingsRequest struct {
-	EnterSendsMessage bool `json:"enterSendsMessage"`
+	EnterSendsMessage *bool `json:"enterSendsMessage,omitempty"`
+	MarkdownEnabled   *bool `json:"markdownEnabled,omitempty"`
 }
 
 func (s *Server) handleChatSettings(w http.ResponseWriter, r *http.Request) {
@@ -653,6 +655,7 @@ func (s *Server) handleChatSettings(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(chatSettingsResponse{
 					EnterSendsMessage: false,
+					MarkdownEnabled:   true,
 				})
 				return
 			}
@@ -663,6 +666,7 @@ func (s *Server) handleChatSettings(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(chatSettingsResponse{
 			EnterSendsMessage: settings.EnterSendsMessage,
+			MarkdownEnabled:   settings.MarkdownEnabled,
 		})
 
 	case http.MethodPost:
@@ -672,7 +676,22 @@ func (s *Server) handleChatSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		settings, err := s.queries.UpsertUserSettings(r.Context(), userID, req.EnterSendsMessage)
+		currentSettings, err := s.queries.GetUserSettings(r.Context(), userID)
+		enterSendsMessage := false
+		markdownEnabled := true
+		if err == nil {
+			enterSendsMessage = currentSettings.EnterSendsMessage
+			markdownEnabled = currentSettings.MarkdownEnabled
+		}
+
+		if req.EnterSendsMessage != nil {
+			enterSendsMessage = *req.EnterSendsMessage
+		}
+		if req.MarkdownEnabled != nil {
+			markdownEnabled = *req.MarkdownEnabled
+		}
+
+		settings, err := s.queries.UpsertUserSettings(r.Context(), userID, enterSendsMessage, markdownEnabled)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -681,6 +700,7 @@ func (s *Server) handleChatSettings(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(chatSettingsResponse{
 			EnterSendsMessage: settings.EnterSendsMessage,
+			MarkdownEnabled:   settings.MarkdownEnabled,
 		})
 
 	default:
