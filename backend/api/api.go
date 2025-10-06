@@ -2,6 +2,7 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -14,6 +15,7 @@ import (
 	_ "image/png"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -80,6 +82,11 @@ func (s *Server) handleDevProxy(frontendURL string) http.HandlerFunc {
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Upgrade") == "websocket" {
+			s.proxyWebSocket(w, r, target)
+			return
+		}
+
 		proxyURL := *target
 		proxyURL.Path = r.URL.Path
 		proxyURL.RawQuery = r.URL.RawQuery
@@ -113,6 +120,67 @@ func (s *Server) handleDevProxy(frontendURL string) http.HandlerFunc {
 		w.WriteHeader(resp.StatusCode)
 		io.Copy(w, resp.Body)
 	}
+}
+
+func (s *Server) proxyWebSocket(w http.ResponseWriter, r *http.Request, target *url.URL) {
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "webserver doesn't support hijacking", http.StatusInternalServerError)
+		return
+	}
+
+	targetConn, err := net.Dial("tcp", target.Host)
+	if err != nil {
+		http.Error(w, "failed to connect to backend", http.StatusBadGateway)
+		return
+	}
+	defer targetConn.Close()
+
+	req := &http.Request{
+		Method: "GET",
+		URL:    &url.URL{Path: r.URL.Path, RawQuery: r.URL.RawQuery},
+		Header: r.Header,
+		Host:   target.Host,
+	}
+
+	if err := req.Write(targetConn); err != nil {
+		http.Error(w, "failed to write request", http.StatusInternalServerError)
+		return
+	}
+
+	clientConn, bufrw, err := hj.Hijack()
+	if err != nil {
+		http.Error(w, "failed to hijack connection", http.StatusInternalServerError)
+		return
+	}
+	defer clientConn.Close()
+
+	targetReader := bufio.NewReader(targetConn)
+	resp, err := http.ReadResponse(targetReader, req)
+	if err != nil {
+		return
+	}
+
+	if err := resp.Write(bufrw); err != nil {
+		return
+	}
+	if err := bufrw.Flush(); err != nil {
+		return
+	}
+
+	done := make(chan struct{}, 2)
+
+	go func() {
+		io.Copy(targetConn, clientConn)
+		done <- struct{}{}
+	}()
+
+	go func() {
+		io.Copy(clientConn, targetConn)
+		done <- struct{}{}
+	}()
+
+	<-done
 }
 
 func (s *Server) handleStaticFiles() http.HandlerFunc {

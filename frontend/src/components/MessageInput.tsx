@@ -3,7 +3,11 @@ import { useState, useEffect, useRef, type KeyboardEvent } from "react";
 import { fetchChatSettings } from "../chatApi";
 import { isTouchDevice } from "../chatUtils";
 
-export function MessageInput({ onSend }: { onSend: (message: string) => void }) {
+export function MessageInput({
+	onSend,
+}: {
+	onSend: (message: string) => void;
+}) {
 	const [message, setMessage] = useState("");
 	const [enterSendsMessage, setEnterSendsMessage] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -73,7 +77,7 @@ export function MessageInput({ onSend }: { onSend: (message: string) => void }) 
 				<button
 					onClick={sendMessage}
 					disabled={!message.trim()}
-					className="px-4 py-2 bg-ctp-blue text-ctp-base rounded hover:bg-ctp-sapphire disabled:opacity-50 disabled:cursor-not-allowed"
+					className="px-4 py-2 bg-ctp-blue text-ctp-base rounded not-disabled:hover:bg-ctp-sapphire disabled:opacity-50 disabled:cursor-not-allowed"
 				>
 					Send
 				</button>

@@ -1,5 +1,5 @@
 // Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)
-import { Plus } from "react-feather";
+import { Plus, Settings } from "react-feather";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../UserContext";
 import Avatar from "../Avatar";
@@ -71,6 +71,7 @@ export function ConversationList({
 									<Avatar
 										size="sm"
 										imageUrl={chat.otherUser.profileImageUrl}
+										username={chat.otherUser.username}
 									/>
 								)}
 								<div className="flex-1 min-w-0">
@@ -89,10 +90,10 @@ export function ConversationList({
 				)}
 			</div>
 
-			<div className="hidden md:flex p-2 bg-ctp-surface0 items-center justify-between">
+			<div className="hidden md:flex p-2 bg-ctp-surface0 items-center justify-between m-2 rounded">
 				<div className="flex items-center gap-2 flex-1 min-w-0">
-					<Avatar size="sm" />
-					<span className="text-sm font-medium truncate">
+					<Avatar size="md" />
+					<span className="text-sm font-medium truncate select-all">
 						{user?.username}
 					</span>
 				</div>
@@ -101,25 +102,7 @@ export function ConversationList({
 					className="p-2 hover:bg-ctp-surface1 rounded transition-colors"
 					title="Settings"
 				>
-					<svg
-						className="w-4 h-4"
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
-					>
-						<path
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							strokeWidth={2}
-							d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-						/>
-						<path
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							strokeWidth={2}
-							d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-						/>
-					</svg>
+					<Settings className="w-4 h-4" />
 				</button>
 			</div>
 		</aside>

@@ -9,7 +9,6 @@ export interface Conversation {
 	otherUser?: {
 		id: number;
 		username: string;
-		displayName: string;
 		profileImageUrl: string | null;
 	};
 }
@@ -20,7 +19,6 @@ export interface Message {
 	seq: number;
 	senderId: number;
 	senderUsername: string;
-	senderDisplayName: string;
 	senderProfileImageUrl: string | null;
 	createdAt: string;
 	editedAt?: string;
@@ -31,7 +29,7 @@ export interface Message {
 
 export function getConversationName(conv: Conversation): string {
 	if (conv.type === "dm" && conv.otherUser) {
-		return conv.otherUser.displayName || conv.otherUser.username;
+		return conv.otherUser.username;
 	}
 	return conv.name || "Unnamed conversation";
 }

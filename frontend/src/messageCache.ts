@@ -6,7 +6,6 @@ interface Message {
 	seq: number;
 	senderId: number;
 	senderUsername: string;
-	senderDisplayName: string;
 	senderProfileImageUrl: string | null;
 	createdAt: string;
 	editedAt?: string;

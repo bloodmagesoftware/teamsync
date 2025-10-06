@@ -107,7 +107,7 @@ export default function Settings() {
 					<h2 className="text-2xl font-bold mb-4">Chat Settings</h2>
 
 					<div className="space-y-4">
-						<label className="flex items-start justify-between p-4 bg-ctp-surface0 rounded">
+						<div className="flex items-start justify-between p-4 bg-ctp-surface0 rounded">
 							<div className="flex-1">
 								<h3 className="font-semibold mb-2">Enter Key Behavior</h3>
 								<p className="text-sm text-ctp-subtext0 mb-2">
@@ -155,7 +155,7 @@ export default function Settings() {
 									}`}
 								/>
 							</button>
-						</label>
+						</div>
 					</div>
 				</div>
 			);

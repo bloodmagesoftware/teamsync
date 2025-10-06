@@ -21,7 +21,6 @@ type conversationResponse struct {
 	OtherUser      *struct {
 		ID              int64   `json:"id"`
 		Username        string  `json:"username"`
-		DisplayName     string  `json:"displayName"`
 		ProfileImageURL *string `json:"profileImageUrl"`
 	} `json:"otherUser,omitempty"`
 }
@@ -32,7 +31,6 @@ type messageResponse struct {
 	Seq                   int64   `json:"seq"`
 	SenderID              int64   `json:"senderId"`
 	SenderUsername        string  `json:"senderUsername"`
-	SenderDisplayName     string  `json:"senderDisplayName"`
 	SenderProfileImageURL *string `json:"senderProfileImageUrl"`
 	CreatedAt             string  `json:"createdAt"`
 	EditedAt              *string `json:"editedAt,omitempty"`
@@ -56,7 +54,6 @@ type updateReadStateRequest struct {
 type userSearchResult struct {
 	ID              int64   `json:"id"`
 	Username        string  `json:"username"`
-	DisplayName     string  `json:"displayName"`
 	ProfileImageURL *string `json:"profileImageUrl"`
 }
 
@@ -105,12 +102,10 @@ func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
 						resp.OtherUser = &struct {
 							ID              int64   `json:"id"`
 							Username        string  `json:"username"`
-							DisplayName     string  `json:"displayName"`
 							ProfileImageURL *string `json:"profileImageUrl"`
 						}{
 							ID:              p.ID,
 							Username:        p.Username,
-							DisplayName:     p.Username,
 							ProfileImageURL: profileImageURL,
 						}
 						break
@@ -263,7 +258,6 @@ func (s *Server) convertToMessageResponse(id, conversationID, seq, senderID int6
 		Seq:                   seq,
 		SenderID:              senderID,
 		SenderUsername:        senderUsername,
-		SenderDisplayName:     senderUsername,
 		SenderProfileImageURL: profileImageURL,
 		CreatedAt:             createdAt.Format("2006-01-02T15:04:05Z"),
 		EditedAt:              editedAtStr,
@@ -409,7 +403,6 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		Seq:                   message.Seq,
 		SenderID:              sender.ID,
 		SenderUsername:        sender.Username,
-		SenderDisplayName:     sender.Username,
 		SenderProfileImageURL: profileImageURL,
 		CreatedAt:             message.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		ContentType:           message.ContentType,
@@ -505,7 +498,6 @@ func (s *Server) handleSearchUsers(w http.ResponseWriter, r *http.Request) {
 		results[i] = userSearchResult{
 			ID:              user.ID,
 			Username:        user.Username,
-			DisplayName:     user.Username,
 			ProfileImageURL: profileImageURL,
 		}
 	}
@@ -556,7 +548,6 @@ func (s *Server) handleGetOrCreateDM(w http.ResponseWriter, r *http.Request) {
 		var otherUserInfo *struct {
 			ID              int64   `json:"id"`
 			Username        string  `json:"username"`
-			DisplayName     string  `json:"displayName"`
 			ProfileImageURL *string `json:"profileImageUrl"`
 		}
 
@@ -570,12 +561,10 @@ func (s *Server) handleGetOrCreateDM(w http.ResponseWriter, r *http.Request) {
 				otherUserInfo = &struct {
 					ID              int64   `json:"id"`
 					Username        string  `json:"username"`
-					DisplayName     string  `json:"displayName"`
 					ProfileImageURL *string `json:"profileImageUrl"`
 				}{
 					ID:              p.ID,
 					Username:        p.Username,
-					DisplayName:     p.Username,
 					ProfileImageURL: profileImageURL,
 				}
 				break
@@ -639,12 +628,10 @@ func (s *Server) handleGetOrCreateDM(w http.ResponseWriter, r *http.Request) {
 		OtherUser: &struct {
 			ID              int64   `json:"id"`
 			Username        string  `json:"username"`
-			DisplayName     string  `json:"displayName"`
 			ProfileImageURL *string `json:"profileImageUrl"`
 		}{
 			ID:              otherUser.ID,
 			Username:        otherUser.Username,
-			DisplayName:     otherUser.Username,
 			ProfileImageURL: profileImageURL,
 		},
 	})

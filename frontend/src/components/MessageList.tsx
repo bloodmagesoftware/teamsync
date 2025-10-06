@@ -50,18 +50,26 @@ export function MessageList({
 					</div>
 				)}
 				{messages.map((msg) => (
-					<div key={msg.id} className="flex gap-3">
-						<Avatar size="sm" imageUrl={msg.senderProfileImageUrl} />
-						<div className="flex-1">
-							<div className="flex items-baseline gap-2">
-								<span className="font-semibold text-ctp-text">
-									{msg.senderDisplayName}
-								</span>
-								<span className="text-xs text-ctp-subtext0">
-									{formatMessageTime(msg.createdAt)}
-								</span>
-							</div>
-							<div className="text-ctp-text mt-1">{msg.body}</div>
+					<div
+						key={msg.id}
+						className="grid grid-cols-[auto_1fr] grid-rows-[auto_auto] gap-x-2"
+					>
+						<Avatar
+							size="sm"
+							className="row-span-2 mt-1"
+							imageUrl={msg.senderProfileImageUrl}
+							username={msg.senderUsername}
+						/>
+						<div>
+							<span className="font-semibold text-ctp-text mr-2 leading-none">
+								{msg.senderUsername}
+							</span>
+							<span className="text-xs text-ctp-subtext0">
+								{formatMessageTime(msg.createdAt)}
+							</span>
+						</div>
+						<div className="text-ctp-text whitespace-pre col-start-2">
+							{msg.body}
 						</div>
 					</div>
 				))}

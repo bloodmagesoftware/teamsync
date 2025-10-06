@@ -1,5 +1,5 @@
 // Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 import { eventManager } from "./eventManager";
 import { messageCache } from "./messageCache";
@@ -25,25 +25,25 @@ export function UserProvider({ children }: { children: ReactNode }) {
 	const [user, setUser] = useState<User | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 
-	const login = (accessToken: string, refreshToken: string, user: User) => {
+	const login = useCallback((accessToken: string, refreshToken: string, user: User) => {
 		localStorage.setItem("accessToken", accessToken);
 		localStorage.setItem("refreshToken", refreshToken);
 		setUser(user);
-	};
+	}, []);
 
-	const logout = async () => {
+	const logout = useCallback(async () => {
 		eventManager.stop();
 		await messageCache.close();
 		localStorage.removeItem("accessToken");
 		localStorage.removeItem("refreshToken");
 		setUser(null);
-	};
+	}, []);
 
-	const updateUser = (user: User) => {
+	const updateUser = useCallback((user: User) => {
 		setUser(user);
-	};
+	}, []);
 
-	const checkAuth = async () => {
+	const checkAuth = useCallback(async () => {
 		const accessToken = localStorage.getItem("accessToken");
 		if (!accessToken) {
 			setIsLoading(false);
@@ -69,14 +69,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
 		} finally {
 			setIsLoading(false);
 		}
-	};
+	}, [logout]);
 
 	useEffect(() => {
 		checkAuth();
-	}, []);
+	}, [checkAuth]);
+
+	const value = useMemo(
+		() => ({ user, isLoading, login, logout, checkAuth, updateUser }),
+		[user, isLoading, login, logout, checkAuth, updateUser]
+	);
 
 	return (
-		<UserContext.Provider value={{ user, isLoading, login, logout, checkAuth, updateUser }}>
+		<UserContext.Provider value={value}>
 			{children}
 		</UserContext.Provider>
 	);
