@@ -1,6 +1,8 @@
 // Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)
 import { createContext, useContext, useState, useEffect } from "react";
 import type { ReactNode } from "react";
+import { eventManager } from "./eventManager";
+import { messageCache } from "./messageCache";
 
 export interface User {
 	id: number;
@@ -29,7 +31,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
 		setUser(user);
 	};
 
-	const logout = () => {
+	const logout = async () => {
+		eventManager.stop();
+		await messageCache.close();
 		localStorage.removeItem("accessToken");
 		localStorage.removeItem("refreshToken");
 		setUser(null);

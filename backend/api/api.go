@@ -52,6 +52,7 @@ func New(queries *db.Queries) *Server {
 	mux.Handle("/api/messages/send", auth.RequireAuth(queries)(http.HandlerFunc(s.handleSendMessage)))
 	mux.Handle("/api/messages/read", auth.RequireAuth(queries)(http.HandlerFunc(s.handleUpdateReadState)))
 	mux.Handle("/api/users/search", auth.RequireAuth(queries)(http.HandlerFunc(s.handleSearchUsers)))
+	mux.Handle("/api/events/stream", auth.RequireAuth(queries)(http.HandlerFunc(s.handleEventStream)))
 
 	if frontendDevURL, ok := os.LookupEnv("FRONTEND_DEV_URL"); ok {
 		log.Printf("development mode: proxying frontend requests to %s", frontendDevURL)
@@ -65,8 +66,8 @@ func New(queries *db.Queries) *Server {
 		Addr:         "127.0.0.1:8080",
 		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		WriteTimeout: 0,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	return s

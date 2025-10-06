@@ -16,6 +16,27 @@ WHERE m.conversation_id = ? AND m.deleted_at IS NULL
 ORDER BY m.seq DESC
 LIMIT ? OFFSET ?;
 
+-- name: GetMessagesSince :many
+SELECT 
+    m.*,
+    u.username as sender_username,
+    u.profile_image_hash as sender_profile_image_hash
+FROM messages m
+INNER JOIN users u ON m.sender_id = u.id
+WHERE m.conversation_id = ? AND m.created_at > ? AND m.deleted_at IS NULL
+ORDER BY m.seq ASC;
+
+-- name: GetMessagesBefore :many
+SELECT 
+    m.*,
+    u.username as sender_username,
+    u.profile_image_hash as sender_profile_image_hash
+FROM messages m
+INNER JOIN users u ON m.sender_id = u.id
+WHERE m.conversation_id = ? AND m.created_at < ? AND m.deleted_at IS NULL
+ORDER BY m.seq DESC
+LIMIT ?;
+
 -- name: GetMessageByID :one
 SELECT * FROM messages WHERE id = ?;
 

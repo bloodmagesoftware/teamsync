@@ -17,19 +17,24 @@ const UserIDKey contextKey = "userID"
 func RequireAuth(queries *db.Queries) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var accessToken string
+
 			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
+			if authHeader != "" {
+				parts := strings.Split(authHeader, " ")
+				if len(parts) == 2 && parts[0] == "Bearer" {
+					accessToken = parts[1]
+				}
+			}
+
+			if accessToken == "" {
+				accessToken = r.URL.Query().Get("token")
+			}
+
+			if accessToken == "" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
-
-			parts := strings.Split(authHeader, " ")
-			if len(parts) != 2 || parts[0] != "Bearer" {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			accessToken := parts[1]
 
 			token, err := queries.GetTokenByAccessToken(r.Context(), accessToken)
 			if err != nil {

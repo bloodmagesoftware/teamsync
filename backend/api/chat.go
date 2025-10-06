@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bloodmagesoftware/teamsync/auth"
 )
@@ -168,6 +169,9 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sinceStr := r.URL.Query().Get("since")
+	beforeStr := r.URL.Query().Get("before")
+
 	limitStr := r.URL.Query().Get("limit")
 	limit := int64(50)
 	if limitStr != "" {
@@ -176,52 +180,97 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	offsetStr := r.URL.Query().Get("offset")
-	offset := int64(0)
-	if offsetStr != "" {
-		if parsedOffset, err := strconv.ParseInt(offsetStr, 10, 64); err == nil {
-			offset = parsedOffset
+	var response []messageResponse
+
+	if sinceStr != "" {
+		sinceTime, err := time.Parse(time.RFC3339, sinceStr)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
-	}
-
-	messages, err := s.queries.GetConversationMessages(r.Context(), conversationID, limit, offset)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	response := make([]messageResponse, len(messages))
-	for i, msg := range messages {
-		var profileImageURL *string
-		if msg.SenderProfileImageHash != nil {
-			url := fmt.Sprintf("/api/profile/image/%s", *msg.SenderProfileImageHash)
-			profileImageURL = &url
+		msgs, err := s.queries.GetMessagesSince(r.Context(), conversationID, sinceTime)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
-
-		var editedAt *string
-		if msg.EditedAt != nil {
-			editedAtStr := msg.EditedAt.Format("2006-01-02T15:04:05Z")
-			editedAt = &editedAtStr
+		response = make([]messageResponse, len(msgs))
+		for i, msg := range msgs {
+			response[i] = s.convertToMessageResponse(msg.ID, msg.ConversationID, msg.Seq, msg.SenderID,
+				msg.SenderUsername, msg.SenderProfileImageHash, msg.CreatedAt, msg.EditedAt,
+				msg.ContentType, msg.Body, msg.ReplyToID)
 		}
-
-		response[i] = messageResponse{
-			ID:                    msg.ID,
-			ConversationID:        msg.ConversationID,
-			Seq:                   msg.Seq,
-			SenderID:              msg.SenderID,
-			SenderUsername:        msg.SenderUsername,
-			SenderDisplayName:     msg.SenderUsername,
-			SenderProfileImageURL: profileImageURL,
-			CreatedAt:             msg.CreatedAt.Format("2006-01-02T15:04:05Z"),
-			EditedAt:              editedAt,
-			ContentType:           msg.ContentType,
-			Body:                  msg.Body,
-			ReplyToID:             msg.ReplyToID,
+	} else if beforeStr != "" {
+		beforeTime, err := time.Parse(time.RFC3339, beforeStr)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		msgs, err := s.queries.GetMessagesBefore(r.Context(), conversationID, beforeTime, limit)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		response = make([]messageResponse, len(msgs))
+		for i, msg := range msgs {
+			response[i] = s.convertToMessageResponse(msg.ID, msg.ConversationID, msg.Seq, msg.SenderID,
+				msg.SenderUsername, msg.SenderProfileImageHash, msg.CreatedAt, msg.EditedAt,
+				msg.ContentType, msg.Body, msg.ReplyToID)
+		}
+	} else {
+		offsetStr := r.URL.Query().Get("offset")
+		offset := int64(0)
+		if offsetStr != "" {
+			if parsedOffset, err := strconv.ParseInt(offsetStr, 10, 64); err == nil {
+				offset = parsedOffset
+			}
+		}
+		msgs, err := s.queries.GetConversationMessages(r.Context(), conversationID, limit, offset)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		response = make([]messageResponse, len(msgs))
+		for i, msg := range msgs {
+			response[i] = s.convertToMessageResponse(msg.ID, msg.ConversationID, msg.Seq, msg.SenderID,
+				msg.SenderUsername, msg.SenderProfileImageHash, msg.CreatedAt, msg.EditedAt,
+				msg.ContentType, msg.Body, msg.ReplyToID)
 		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+func (s *Server) convertToMessageResponse(id, conversationID, seq, senderID int64,
+	senderUsername string, senderProfileImageHash *string, createdAt time.Time, editedAt *time.Time,
+	contentType, body string, replyToID *int64) messageResponse {
+
+	var profileImageURL *string
+	if senderProfileImageHash != nil {
+		url := fmt.Sprintf("/api/profile/image/%s", *senderProfileImageHash)
+		profileImageURL = &url
+	}
+
+	var editedAtStr *string
+	if editedAt != nil {
+		str := editedAt.Format("2006-01-02T15:04:05Z")
+		editedAtStr = &str
+	}
+
+	return messageResponse{
+		ID:                    id,
+		ConversationID:        conversationID,
+		Seq:                   seq,
+		SenderID:              senderID,
+		SenderUsername:        senderUsername,
+		SenderDisplayName:     senderUsername,
+		SenderProfileImageURL: profileImageURL,
+		CreatedAt:             createdAt.Format("2006-01-02T15:04:05Z"),
+		EditedAt:              editedAtStr,
+		ContentType:           contentType,
+		Body:                  body,
+		ReplyToID:             replyToID,
+	}
 }
 
 func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
@@ -354,8 +403,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		profileImageURL = &url
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(messageResponse{
+	msgResp := messageResponse{
 		ID:                    message.ID,
 		ConversationID:        message.ConversationID,
 		Seq:                   message.Seq,
@@ -367,7 +415,12 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		ContentType:           message.ContentType,
 		Body:                  message.Body,
 		ReplyToID:             req.ReplyToID,
-	})
+	}
+
+	go s.BroadcastMessageToConversation(conversationID, msgResp, userID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(msgResp)
 }
 
 func (s *Server) handleUpdateReadState(w http.ResponseWriter, r *http.Request) {

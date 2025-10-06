@@ -4,6 +4,8 @@ import { useUser } from "./UserContext";
 import { useNavigate } from "react-router-dom";
 import Avatar from "./Avatar";
 import { ArrowLeft, Plus, X } from "react-feather";
+import { messageCache } from "./messageCache";
+import { eventManager, type Event } from "./eventManager";
 
 interface Conversation {
 	id: number;
@@ -42,14 +44,56 @@ export default function Chats() {
 	const [messages, setMessages] = useState<Message[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [showNewConversation, setShowNewConversation] = useState(false);
+	const [hasOlderMessages, setHasOlderMessages] = useState(true);
+	const [loadingOlder, setLoadingOlder] = useState(false);
 
 	useEffect(() => {
-		fetchConversations();
+		const initializeApp = async () => {
+			await messageCache.init();
+			await messageCache.cleanupOldMessages();
+			await fetchConversations();
+			eventManager.start();
+		};
+
+		initializeApp();
+
+		return () => {
+			eventManager.stop();
+		};
 	}, []);
 
 	useEffect(() => {
+		const handleEvent = async (event: Event) => {
+			if (event.type === "message.new") {
+				const msg = event.data as Message;
+				await messageCache.saveMessages([msg]);
+
+				if (msg.conversationId === selectedChatId) {
+					setMessages((prev) => [...prev, msg]);
+					await updateReadState(msg.conversationId, msg.seq);
+				} else {
+					setConversations((prev) =>
+						prev.map((conv) =>
+							conv.id === msg.conversationId
+								? { ...conv, unreadCount: conv.unreadCount + 1 }
+								: conv,
+						),
+					);
+				}
+
+				await messageCache.updateConversationMeta(msg.conversationId, {
+					lastSyncTimestamp: msg.createdAt,
+				});
+			}
+		};
+
+		const unsubscribe = eventManager.addListener(handleEvent);
+		return unsubscribe;
+	}, [selectedChatId]);
+
+	useEffect(() => {
 		if (selectedChatId) {
-			fetchMessages(selectedChatId);
+			loadMessagesForConversation(selectedChatId);
 		}
 	}, [selectedChatId]);
 
@@ -73,11 +117,17 @@ export default function Chats() {
 		}
 	};
 
-	const fetchMessages = async (conversationId: number) => {
+	const loadMessagesForConversation = async (conversationId: number) => {
 		try {
+			const cachedMessages = await messageCache.getMessages(conversationId);
+			setMessages(cachedMessages);
+
+			const meta = await messageCache.getConversationMeta(conversationId);
+			const lastSync = meta?.lastSyncTimestamp || new Date(0).toISOString();
+
 			const accessToken = localStorage.getItem("accessToken");
 			const response = await fetch(
-				`/api/messages?conversationId=${conversationId}`,
+				`/api/messages?conversationId=${conversationId}&since=${encodeURIComponent(lastSync)}`,
 				{
 					headers: {
 						Authorization: `Bearer ${accessToken}`,
@@ -86,17 +136,62 @@ export default function Chats() {
 			);
 
 			if (response.ok) {
-				const data = await response.json();
-				const messagesArray = (data || []).reverse();
-				setMessages(messagesArray);
+				const newMessages = (await response.json()) || [];
+				if (newMessages.length > 0) {
+					await messageCache.saveMessages(newMessages);
+					setMessages((prev) => [...prev, ...newMessages]);
 
-				if (messagesArray.length > 0) {
-					const lastMessage = messagesArray[messagesArray.length - 1];
-					updateReadState(conversationId, lastMessage.seq);
+					const lastMessage = newMessages[newMessages.length - 1];
+					await messageCache.updateConversationMeta(conversationId, {
+						lastSyncTimestamp: lastMessage.createdAt,
+					});
+				}
+
+				if (cachedMessages.length > 0 || newMessages.length > 0) {
+					const allMessages = [...cachedMessages, ...newMessages];
+					const lastMessage = allMessages[allMessages.length - 1];
+					await updateReadState(conversationId, lastMessage.seq);
 				}
 			}
 		} catch (error) {
-			console.error("Failed to fetch messages:", error);
+			console.error("Failed to load messages:", error);
+		}
+	};
+
+	const loadOlderMessages = async () => {
+		if (!selectedChatId || loadingOlder || !hasOlderMessages) return;
+
+		setLoadingOlder(true);
+		try {
+			const oldestMessage = messages[0];
+			if (!oldestMessage) {
+				setHasOlderMessages(false);
+				return;
+			}
+
+			const accessToken = localStorage.getItem("accessToken");
+			const response = await fetch(
+				`/api/messages?conversationId=${selectedChatId}&before=${encodeURIComponent(oldestMessage.createdAt)}&limit=50`,
+				{
+					headers: {
+						Authorization: `Bearer ${accessToken}`,
+					},
+				},
+			);
+
+			if (response.ok) {
+				const olderMessages = (await response.json()) || [];
+				if (olderMessages.length === 0) {
+					setHasOlderMessages(false);
+				} else {
+					const reversedOlder = olderMessages.reverse();
+					setMessages((prev) => [...reversedOlder, ...prev]);
+				}
+			}
+		} catch (error) {
+			console.error("Failed to load older messages:", error);
+		} finally {
+			setLoadingOlder(false);
 		}
 	};
 
@@ -147,6 +242,11 @@ export default function Chats() {
 
 			if (response.ok) {
 				const newMessage = await response.json();
+				await messageCache.saveMessages([newMessage]);
+				await messageCache.updateConversationMeta(selectedChatId, {
+					lastSyncTimestamp: newMessage.createdAt,
+				});
+
 				setMessages((prev) => [...prev, newMessage]);
 
 				setConversations((prev) => {
@@ -332,6 +432,17 @@ export default function Chats() {
 							</h2>
 						</div>
 						<div className="flex-1 overflow-y-auto p-4 space-y-4">
+							{hasOlderMessages && messages.length > 0 && (
+								<div className="flex justify-center mb-4">
+									<button
+										onClick={loadOlderMessages}
+										disabled={loadingOlder}
+										className="px-4 py-2 text-sm bg-ctp-surface0 text-ctp-text rounded hover:bg-ctp-surface1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+									>
+										{loadingOlder ? "Loading..." : "Load older messages"}
+									</button>
+								</div>
+							)}
 							{messages.map((msg) => (
 								<div key={msg.id} className="flex gap-3">
 									<Avatar size="sm" imageUrl={msg.senderProfileImageUrl} />
