@@ -1,0 +1,598 @@
+// Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)
+package api
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/bloodmagesoftware/teamsync/auth"
+)
+
+type conversationResponse struct {
+	ID             int64   `json:"id"`
+	Type           string  `json:"type"`
+	Name           *string `json:"name"`
+	LastMessageSeq int64   `json:"lastMessageSeq"`
+	UnreadCount    int64   `json:"unreadCount"`
+	OtherUser      *struct {
+		ID              int64   `json:"id"`
+		Username        string  `json:"username"`
+		DisplayName     string  `json:"displayName"`
+		ProfileImageURL *string `json:"profileImageUrl"`
+	} `json:"otherUser,omitempty"`
+}
+
+type messageResponse struct {
+	ID                    int64   `json:"id"`
+	ConversationID        int64   `json:"conversationId"`
+	Seq                   int64   `json:"seq"`
+	SenderID              int64   `json:"senderId"`
+	SenderUsername        string  `json:"senderUsername"`
+	SenderDisplayName     string  `json:"senderDisplayName"`
+	SenderProfileImageURL *string `json:"senderProfileImageUrl"`
+	CreatedAt             string  `json:"createdAt"`
+	EditedAt              *string `json:"editedAt,omitempty"`
+	ContentType           string  `json:"contentType"`
+	Body                  string  `json:"body"`
+	ReplyToID             *int64  `json:"replyToId,omitempty"`
+}
+
+type sendMessageRequest struct {
+	ConversationID int64  `json:"conversationId,omitempty"`
+	OtherUserID    *int64 `json:"otherUserId,omitempty"`
+	Body           string `json:"body"`
+	ReplyToID      *int64 `json:"replyToId,omitempty"`
+}
+
+type updateReadStateRequest struct {
+	ConversationID int64 `json:"conversationId"`
+	LastReadSeq    int64 `json:"lastReadSeq"`
+}
+
+type userSearchResult struct {
+	ID              int64   `json:"id"`
+	Username        string  `json:"username"`
+	DisplayName     string  `json:"displayName"`
+	ProfileImageURL *string `json:"profileImageUrl"`
+}
+
+type getOrCreateDMRequest struct {
+	OtherUserID int64 `json:"otherUserId"`
+}
+
+func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	conversations, err := s.queries.GetUserConversations(r.Context(), userID, userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	response := make([]conversationResponse, 0, len(conversations))
+	for _, conv := range conversations {
+		resp := conversationResponse{
+			ID:             conv.ID,
+			Type:           conv.Type,
+			Name:           conv.Name,
+			LastMessageSeq: conv.LastMessageSeq,
+			UnreadCount:    conv.UnreadCount,
+		}
+
+		if conv.Type == "dm" {
+			participants, err := s.queries.GetConversationParticipants(r.Context(), conv.ID)
+			if err == nil {
+				for _, p := range participants {
+					if p.ID != userID {
+						var profileImageURL *string
+						if p.ProfileImageHash != nil {
+							url := fmt.Sprintf("/api/profile/image/%s", *p.ProfileImageHash)
+							profileImageURL = &url
+						}
+						resp.OtherUser = &struct {
+							ID              int64   `json:"id"`
+							Username        string  `json:"username"`
+							DisplayName     string  `json:"displayName"`
+							ProfileImageURL *string `json:"profileImageUrl"`
+						}{
+							ID:              p.ID,
+							Username:        p.Username,
+							DisplayName:     p.Username,
+							ProfileImageURL: profileImageURL,
+						}
+						break
+					}
+				}
+			}
+		}
+
+		response = append(response, resp)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	conversationIDStr := r.URL.Query().Get("conversationId")
+	if conversationIDStr == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	conversationID, err := strconv.ParseInt(conversationIDStr, 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	participants, err := s.queries.GetConversationParticipants(r.Context(), conversationID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	isParticipant := false
+	for _, p := range participants {
+		if p.ID == userID {
+			isParticipant = true
+			break
+		}
+	}
+
+	if !isParticipant {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	limit := int64(50)
+	if limitStr != "" {
+		if parsedLimit, err := strconv.ParseInt(limitStr, 10, 64); err == nil {
+			limit = parsedLimit
+		}
+	}
+
+	offsetStr := r.URL.Query().Get("offset")
+	offset := int64(0)
+	if offsetStr != "" {
+		if parsedOffset, err := strconv.ParseInt(offsetStr, 10, 64); err == nil {
+			offset = parsedOffset
+		}
+	}
+
+	messages, err := s.queries.GetConversationMessages(r.Context(), conversationID, limit, offset)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	response := make([]messageResponse, len(messages))
+	for i, msg := range messages {
+		var profileImageURL *string
+		if msg.SenderProfileImageHash != nil {
+			url := fmt.Sprintf("/api/profile/image/%s", *msg.SenderProfileImageHash)
+			profileImageURL = &url
+		}
+
+		var editedAt *string
+		if msg.EditedAt != nil {
+			editedAtStr := msg.EditedAt.Format("2006-01-02T15:04:05Z")
+			editedAt = &editedAtStr
+		}
+
+		response[i] = messageResponse{
+			ID:                    msg.ID,
+			ConversationID:        msg.ConversationID,
+			Seq:                   msg.Seq,
+			SenderID:              msg.SenderID,
+			SenderUsername:        msg.SenderUsername,
+			SenderDisplayName:     msg.SenderUsername,
+			SenderProfileImageURL: profileImageURL,
+			CreatedAt:             msg.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			EditedAt:              editedAt,
+			ContentType:           msg.ContentType,
+			Body:                  msg.Body,
+			ReplyToID:             msg.ReplyToID,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	var req sendMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.Body) == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Message body cannot be empty"})
+		return
+	}
+
+	conversationID := req.ConversationID
+
+	if conversationID == 0 && req.OtherUserID != nil {
+		existingConv, err := s.queries.GetOrCreateDMConversation(r.Context(), userID, *req.OtherUserID)
+		if err == nil {
+			conversationID = existingConv.ID
+		} else {
+			tx, err := s.queries.Begin()
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			defer tx.Rollback()
+
+			name := ""
+			conv, err := tx.CreateConversation(r.Context(), "dm", &name)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			if err := tx.AddConversationParticipant(r.Context(), conv.ID, userID); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			if err := tx.AddConversationParticipant(r.Context(), conv.ID, *req.OtherUserID); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			if err := tx.Commit(); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			conversationID = conv.ID
+		}
+	}
+
+	if conversationID == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "conversationId or otherUserId required"})
+		return
+	}
+
+	participants, err := s.queries.GetConversationParticipants(r.Context(), conversationID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	isParticipant := false
+	for _, p := range participants {
+		if p.ID == userID {
+			isParticipant = true
+			break
+		}
+	}
+
+	if !isParticipant {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	tx, err := s.queries.Begin()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	if err := tx.UpdateConversationSeq(r.Context(), conversationID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	conv, err := tx.GetConversationByID(r.Context(), conversationID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	message, err := tx.CreateMessage(r.Context(), conversationID, conv.LastMessageSeq, userID, "text", req.Body, req.ReplyToID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	sender, err := s.queries.GetUser(r.Context(), userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	var profileImageURL *string
+	if sender.ProfileImageHash != nil {
+		url := "/api/profile/image/" + *sender.ProfileImageHash
+		profileImageURL = &url
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(messageResponse{
+		ID:                    message.ID,
+		ConversationID:        message.ConversationID,
+		Seq:                   message.Seq,
+		SenderID:              sender.ID,
+		SenderUsername:        sender.Username,
+		SenderDisplayName:     sender.Username,
+		SenderProfileImageURL: profileImageURL,
+		CreatedAt:             message.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		ContentType:           message.ContentType,
+		Body:                  message.Body,
+		ReplyToID:             req.ReplyToID,
+	})
+}
+
+func (s *Server) handleUpdateReadState(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	var req updateReadStateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	participants, err := s.queries.GetConversationParticipants(r.Context(), req.ConversationID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	isParticipant := false
+	for _, p := range participants {
+		if p.ID == userID {
+			isParticipant = true
+			break
+		}
+	}
+
+	if !isParticipant {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	if err := s.queries.UpdateReadState(r.Context(), req.ConversationID, userID, req.LastReadSeq); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+}
+
+func (s *Server) handleSearchUsers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]userSearchResult{})
+		return
+	}
+
+	users, err := s.queries.SearchUsers(r.Context(), "%"+query+"%", userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	results := make([]userSearchResult, len(users))
+	for i, user := range users {
+		var profileImageURL *string
+		if user.ProfileImageHash != nil {
+			url := fmt.Sprintf("/api/profile/image/%s", *user.ProfileImageHash)
+			profileImageURL = &url
+		}
+
+		results[i] = userSearchResult{
+			ID:              user.ID,
+			Username:        user.Username,
+			DisplayName:     user.Username,
+			ProfileImageURL: profileImageURL,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
+func (s *Server) handleGetOrCreateDM(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	var req getOrCreateDMRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if req.OtherUserID == userID {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Cannot create conversation with yourself"})
+		return
+	}
+
+	otherUser, err := s.queries.GetUser(r.Context(), req.OtherUserID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "User not found"})
+		return
+	}
+
+	existingConv, err := s.queries.GetOrCreateDMConversation(r.Context(), userID, req.OtherUserID)
+	if err == nil {
+		participants, err := s.queries.GetConversationParticipants(r.Context(), existingConv.ID)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		var otherUserInfo *struct {
+			ID              int64   `json:"id"`
+			Username        string  `json:"username"`
+			DisplayName     string  `json:"displayName"`
+			ProfileImageURL *string `json:"profileImageUrl"`
+		}
+
+		for _, p := range participants {
+			if p.ID != userID {
+				var profileImageURL *string
+				if p.ProfileImageHash != nil {
+					url := fmt.Sprintf("/api/profile/image/%s", *p.ProfileImageHash)
+					profileImageURL = &url
+				}
+				otherUserInfo = &struct {
+					ID              int64   `json:"id"`
+					Username        string  `json:"username"`
+					DisplayName     string  `json:"displayName"`
+					ProfileImageURL *string `json:"profileImageUrl"`
+				}{
+					ID:              p.ID,
+					Username:        p.Username,
+					DisplayName:     p.Username,
+					ProfileImageURL: profileImageURL,
+				}
+				break
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(conversationResponse{
+			ID:             existingConv.ID,
+			Type:           existingConv.Type,
+			Name:           existingConv.Name,
+			LastMessageSeq: existingConv.LastMessageSeq,
+			UnreadCount:    0,
+			OtherUser:      otherUserInfo,
+		})
+		return
+	}
+
+	tx, err := s.queries.Begin()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	name := ""
+	conv, err := tx.CreateConversation(r.Context(), "dm", &name)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.AddConversationParticipant(r.Context(), conv.ID, userID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.AddConversationParticipant(r.Context(), conv.ID, req.OtherUserID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	var profileImageURL *string
+	if otherUser.ProfileImageHash != nil {
+		url := fmt.Sprintf("/api/profile/image/%s", *otherUser.ProfileImageHash)
+		profileImageURL = &url
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(conversationResponse{
+		ID:             conv.ID,
+		Type:           conv.Type,
+		Name:           conv.Name,
+		LastMessageSeq: conv.LastMessageSeq,
+		UnreadCount:    0,
+		OtherUser: &struct {
+			ID              int64   `json:"id"`
+			Username        string  `json:"username"`
+			DisplayName     string  `json:"displayName"`
+			ProfileImageURL *string `json:"profileImageUrl"`
+		}{
+			ID:              otherUser.ID,
+			Username:        otherUser.Username,
+			DisplayName:     otherUser.Username,
+			ProfileImageURL: profileImageURL,
+		},
+	})
+}

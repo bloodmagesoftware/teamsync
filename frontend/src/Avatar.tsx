@@ -3,9 +3,16 @@ import { useUser } from "./UserContext";
 interface AvatarProps {
 	size?: "sm" | "md" | "lg";
 	className?: string;
+	imageUrl?: string | null;
+	username?: string;
 }
 
-export default function Avatar({ size = "md", className = "" }: AvatarProps) {
+export default function Avatar({
+	size = "md",
+	className = "",
+	imageUrl,
+	username,
+}: AvatarProps) {
 	const { user } = useUser();
 
 	const sizeClasses = {
@@ -16,13 +23,14 @@ export default function Avatar({ size = "md", className = "" }: AvatarProps) {
 
 	const sizeClass = sizeClasses[size];
 
-	if (!user) return null;
+	const displayImageUrl = imageUrl !== undefined ? imageUrl : user?.profileImageUrl;
+	const displayUsername = username || user?.username || "?";
 
-	if (user.profileImageUrl) {
+	if (displayImageUrl) {
 		return (
 			<img
-				src={user.profileImageUrl}
-				alt={user.username}
+				src={displayImageUrl}
+				alt={displayUsername}
 				className={`${sizeClass} rounded-full object-cover ${className}`}
 			/>
 		);
@@ -32,7 +40,7 @@ export default function Avatar({ size = "md", className = "" }: AvatarProps) {
 		<div
 			className={`${sizeClass} rounded-full bg-ctp-surface1 flex items-center justify-center font-bold ${className}`}
 		>
-			{user.username.charAt(0).toUpperCase()}
+			{displayUsername.charAt(0).toUpperCase()}
 		</div>
 	);
 }

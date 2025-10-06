@@ -222,7 +222,7 @@ export default function Settings() {
 }
 
 function ProfileSettings() {
-	const { user, updateUser, checkAuth } = useUser();
+	const { user, checkAuth } = useUser();
 	const [uploading, setUploading] = useState(false);
 
 	const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

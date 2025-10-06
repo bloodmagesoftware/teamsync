@@ -41,3 +41,9 @@ UPDATE users SET profile_image = ?, profile_image_hash = ? WHERE id = ?;
 
 -- name: GetUserProfileImage :one
 SELECT profile_image FROM users WHERE id = ? LIMIT 1;
+
+-- name: SearchUsers :many
+SELECT id, username, profile_image_hash FROM users 
+WHERE username LIKE ? AND id != ?
+ORDER BY username
+LIMIT 10;

@@ -46,6 +46,12 @@ func New(queries *db.Queries) *Server {
 	mux.Handle("/api/profile/image", auth.RequireAuth(queries)(http.HandlerFunc(s.handleProfileImageUpload)))
 	mux.HandleFunc("/api/profile/image/", s.handleProfileImageServe)
 	mux.Handle("/api/settings/chat", auth.RequireAuth(queries)(http.HandlerFunc(s.handleChatSettings)))
+	mux.Handle("/api/conversations", auth.RequireAuth(queries)(http.HandlerFunc(s.handleConversations)))
+	mux.Handle("/api/conversations/dm", auth.RequireAuth(queries)(http.HandlerFunc(s.handleGetOrCreateDM)))
+	mux.Handle("/api/messages", auth.RequireAuth(queries)(http.HandlerFunc(s.handleMessages)))
+	mux.Handle("/api/messages/send", auth.RequireAuth(queries)(http.HandlerFunc(s.handleSendMessage)))
+	mux.Handle("/api/messages/read", auth.RequireAuth(queries)(http.HandlerFunc(s.handleUpdateReadState)))
+	mux.Handle("/api/users/search", auth.RequireAuth(queries)(http.HandlerFunc(s.handleSearchUsers)))
 
 	if frontendDevURL, ok := os.LookupEnv("FRONTEND_DEV_URL"); ok {
 		log.Printf("development mode: proxying frontend requests to %s", frontendDevURL)
