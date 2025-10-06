@@ -5,14 +5,17 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/bloodmagesoftware/teamsync/api"
 	"github.com/bloodmagesoftware/teamsync/auth"
 	"github.com/bloodmagesoftware/teamsync/db"
+	"github.com/bloodmagesoftware/teamsync/rtc"
 )
 
 func main() {
@@ -26,9 +29,33 @@ func main() {
 		log.Fatalf("failed to ensure initial invitation: %v", err)
 	}
 
-	server := api.New(database)
+	turnConfig := rtc.Config{
+		ListenAddress:  strings.TrimSpace(os.Getenv("TURN_LISTEN_ADDRESS")),
+		Realm:          strings.TrimSpace(os.Getenv("TURN_REALM")),
+		UsernamePrefix: strings.TrimSpace(os.Getenv("TURN_USERNAME_PREFIX")),
+	}
+
+	if relayEnv := strings.TrimSpace(os.Getenv("TURN_RELAY_IP")); relayEnv != "" {
+		if ip := net.ParseIP(relayEnv); ip != nil {
+			turnConfig.RelayAddress = ip
+		} else {
+			log.Printf("invalid TURN_RELAY_IP: %q", relayEnv)
+		}
+	}
+
+	turnServer, err := rtc.NewServer(database, turnConfig, log.Default())
+	if err != nil {
+		log.Fatalf("failed to start TURN server: %v", err)
+	}
 	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := turnServer.Close(); err != nil {
+			log.Printf("error during TURN shutdown: %v", err)
+		}
+	}()
+
+	server := api.New(database, turnServer.Config())
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := server.Shutdown(ctx); err != nil {
 			log.Printf("error during server shutdown: %v", err)
@@ -44,6 +71,7 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	<-quit
+	database.Close()
 
 	log.Printf("shutdown signal received")
 }

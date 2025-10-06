@@ -452,7 +452,7 @@ function InvitationsSettings() {
 						<p className="text-ctp-subtext0">No invitations yet</p>
 					) : (
 						invitations.map((invitation) => {
-							const url = new URL(`/register`, window.location.href);
+							const url = new URL("/register", window.location.href);
 							url.searchParams.set("invite", invitation.code);
 							const urlString = url.toString();
 

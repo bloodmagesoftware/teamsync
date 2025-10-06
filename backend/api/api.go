@@ -25,6 +25,7 @@ import (
 
 	"github.com/bloodmagesoftware/teamsync/auth"
 	"github.com/bloodmagesoftware/teamsync/db"
+	"github.com/bloodmagesoftware/teamsync/rtc"
 	"github.com/chai2010/webp"
 	"github.com/nfnt/resize"
 )
@@ -32,11 +33,13 @@ import (
 type Server struct {
 	httpServer *http.Server
 	queries    *db.Queries
+	turnConfig rtc.Config
 }
 
-func New(queries *db.Queries) *Server {
+func New(queries *db.Queries, turnConfig rtc.Config) *Server {
 	s := &Server{
-		queries: queries,
+		queries:    queries,
+		turnConfig: turnConfig,
 	}
 
 	mux := http.NewServeMux()
@@ -55,6 +58,10 @@ func New(queries *db.Queries) *Server {
 	mux.Handle("/api/messages/read", auth.RequireAuth(queries)(http.HandlerFunc(s.handleUpdateReadState)))
 	mux.Handle("/api/users/search", auth.RequireAuth(queries)(http.HandlerFunc(s.handleSearchUsers)))
 	mux.Handle("/api/events/stream", auth.RequireAuth(queries)(http.HandlerFunc(s.handleEventStream)))
+	mux.Handle("/api/calls/start", auth.RequireAuth(queries)(http.HandlerFunc(s.handleStartCall)))
+	mux.Handle("/api/calls/status", auth.RequireAuth(queries)(http.HandlerFunc(s.handleCallStatus)))
+	mux.Handle("/api/calls/config", auth.RequireAuth(queries)(http.HandlerFunc(s.handleCallConfig)))
+	mux.HandleFunc("/api/calls/signaling", s.handleCallSignaling)
 
 	if frontendDevURL, ok := os.LookupEnv("FRONTEND_DEV_URL"); ok {
 		log.Printf("development mode: proxying frontend requests to %s", frontendDevURL)
@@ -65,7 +72,7 @@ func New(queries *db.Queries) *Server {
 	}
 
 	s.httpServer = &http.Server{
-		Addr:         "127.0.0.1:8080",
+		Addr:         "0.0.0.0:8080",
 		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 0,

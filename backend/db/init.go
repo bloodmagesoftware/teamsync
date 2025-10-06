@@ -38,8 +38,10 @@ func (q *Queries) Close() error {
 	}
 	switch db := q.db.(type) {
 	case *sql.DB:
+		q.db = nil
 		return db.Close()
 	case *sql.Tx:
+		q.db = nil
 		return db.Rollback()
 	default:
 		return fmt.Errorf("unexpected type %T for querier db", q.db)

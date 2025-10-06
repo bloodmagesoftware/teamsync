@@ -3,6 +3,10 @@
 @import "tailwindcss";
 @import "@catppuccin/tailwindcss/mocha.css";
 
+@variant pointer-coarse (@media (pointer: coarse));
+@variant pointer-fine (@media (pointer: fine));
+@variant mouse-only (@media (hover: hover) and (pointer: fine));
+
 @layer base {
 	button,
 	a {
@@ -20,4 +24,8 @@ body {
 	width: 100dvw;
 	height: 100dvh;
 	overflow: hidden;
+}
+
+:root {
+	scrollbar-color: var(--catppuccin-color-surface0) var(--catppuccin-color-base);
 }

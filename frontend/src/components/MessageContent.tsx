@@ -6,15 +6,35 @@ import rehypeHighlight from "rehype-highlight";
 import type { Components } from "react-markdown";
 import latteHighlightTheme from "@catppuccin/highlightjs/css/catppuccin-latte.css?inline";
 import mochaHighlightTheme from "@catppuccin/highlightjs/css/catppuccin-mocha.css?inline";
+import { Video } from "react-feather";
+import { getCallStatus } from "../chatApi";
 
 interface MessageContentProps {
 	body: string;
 	contentType: string;
+	messageId?: number;
+	onJoinCall?: () => void;
 }
 
-export function MessageContent({ body, contentType }: MessageContentProps) {
+export function MessageContent({ body, contentType, messageId, onJoinCall }: MessageContentProps) {
 	const [isDark, setIsDark] = useState(true);
+	const [callActive, setCallActive] = useState(true);
 	const highlightStyleRef = useRef<HTMLStyleElement | null>(null);
+
+	useEffect(() => {
+		if (contentType === "application/call" && messageId) {
+			const checkStatus = async () => {
+				try {
+					const status = await getCallStatus(messageId);
+					setCallActive(status.active);
+				} catch (error) {
+					console.error("Failed to check call status:", error);
+					setCallActive(false);
+				}
+			};
+			checkStatus();
+		}
+	}, [contentType, messageId]);
 
 	useEffect(() => {
 		if (typeof document === "undefined" || typeof window === "undefined") {
@@ -158,6 +178,26 @@ export function MessageContent({ body, contentType }: MessageContentProps) {
 		}),
 		[],
 	);
+
+	if (contentType === "application/call") {
+		if (!callActive) {
+			return (
+				<div className="flex items-center gap-2 px-4 py-2 bg-ctp-surface0 text-ctp-subtext0 rounded">
+					<Video className="w-4 h-4" />
+					Call Ended
+				</div>
+			);
+		}
+		return (
+			<button
+				onClick={onJoinCall}
+				className="flex items-center gap-2 px-4 py-2 bg-ctp-blue text-white rounded hover:bg-ctp-sapphire transition-colors"
+			>
+				<Video className="w-4 h-4" />
+				Join Video Call
+			</button>
+		);
+	}
 
 	if (contentType === "text/html") {
 		return (

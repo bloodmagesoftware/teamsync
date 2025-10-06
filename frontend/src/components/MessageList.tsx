@@ -1,5 +1,5 @@
 // Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)
-import { ArrowLeft } from "react-feather";
+import { ArrowLeft, Video } from "react-feather";
 import Avatar from "../Avatar";
 import type { Conversation, Message } from "../chatUtils";
 import { getConversationName, formatMessageTime } from "../chatUtils";
@@ -13,6 +13,8 @@ export function MessageList({
 	messagesContainerRef,
 	onBack,
 	onLoadOlder,
+	onStartCall,
+	onJoinCall,
 }: {
 	conversation: Conversation;
 	messages: Message[];
@@ -21,6 +23,8 @@ export function MessageList({
 	messagesContainerRef: React.RefObject<HTMLDivElement | null>;
 	onBack: () => void;
 	onLoadOlder: () => void;
+	onStartCall?: () => void;
+	onJoinCall?: (messageId: number) => void;
 }) {
 	return (
 		<>
@@ -31,9 +35,18 @@ export function MessageList({
 				>
 					<ArrowLeft className="w-5 h-5" />
 				</button>
-				<h2 className="text-lg font-semibold">
+				<h2 className="text-lg font-semibold flex-1">
 					{getConversationName(conversation)}
 				</h2>
+				{conversation.type === "dm" && onStartCall && (
+					<button
+						onClick={onStartCall}
+						className="p-2 hover:bg-ctp-surface0 rounded transition-colors"
+						title="Start video call"
+					>
+						<Video className="w-5 h-5" />
+					</button>
+				)}
 			</div>
 			<div
 				ref={messagesContainerRef}
@@ -70,7 +83,12 @@ export function MessageList({
 							</span>
 						</div>
 						<div className="col-start-2 max-w-full overflow-auto">
-							<MessageContent body={msg.body} contentType={msg.contentType} />
+							<MessageContent 
+								body={msg.body} 
+								contentType={msg.contentType}
+								messageId={msg.id}
+								onJoinCall={msg.contentType === "application/call" ? () => onJoinCall?.(msg.id) : undefined}
+							/>
 						</div>
 					</div>
 				))}

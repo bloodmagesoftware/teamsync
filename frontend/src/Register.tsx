@@ -102,10 +102,10 @@ export default function Register() {
 					{error && <div className="mb-4 text-ctp-red">{error}</div>}
 					{!registerMutation.data?.success &&
 						registerMutation.data?.message && (
-							<div className="mb-4 text-ctp-red">
-								{registerMutation.data.message}
-							</div>
-						)}
+						<div className="mb-4 text-ctp-red">
+							{registerMutation.data.message}
+						</div>
+					)}
 					{registerMutation.isError && (
 						<div className="mb-4 text-ctp-red">Network error</div>
 					)}

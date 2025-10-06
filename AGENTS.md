@@ -18,6 +18,12 @@ The backend provides a Web API for the frontend and is not available for direct 
 
 React is used for the frontend with Vite as the bundler.
 
+### Styling
+
+Tailwind CSS v4 is used for styling. No `tailwind.config.js`.
+
+Avoid using flex. Use grid or other layouts like absolute positioned inside relative positioned parent elements. Margins are also a good option for spacing.
+
 ## License
 
 AGPL v3.0

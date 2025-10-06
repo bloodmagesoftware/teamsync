@@ -23,8 +23,10 @@ import {
 	markAsRead,
 	createDirectConversation,
 } from "./chatApi";
+import { useCall } from "./CallContext";
 
 export default function Chats() {
+	const { startCall, answerCall } = useCall();
 	const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
 	const [conversations, setConversations] = useState<Conversation[]>([]);
 	const [messages, setMessages] = useState<Message[]>([]);
@@ -237,6 +239,34 @@ export default function Chats() {
 		}
 	};
 
+	const handleStartCall = async () => {
+		if (!selectedChatId || !selectedConversation?.otherUser) return;
+
+		try {
+			await startCall({
+				conversationId: selectedChatId,
+				username: selectedConversation.otherUser.username,
+				profileImageUrl: selectedConversation.otherUser.profileImageUrl,
+			});
+		} catch (error) {
+			console.error("Failed to start call:", error);
+		}
+	};
+
+	const handleJoinCall = async (messageId: number) => {
+		if (!selectedConversation?.otherUser) return;
+
+		try {
+			await answerCall({
+				messageId,
+				username: selectedConversation.otherUser.username,
+				profileImageUrl: selectedConversation.otherUser.profileImageUrl,
+			});
+		} catch (error) {
+			console.error("Failed to join call:", error);
+		}
+	};
+
 	return (
 		<div className="flex h-screen bg-ctp-base text-ctp-text">
 			{showNewConversation && (
@@ -265,6 +295,8 @@ export default function Chats() {
 							messagesContainerRef={messagesContainerRef}
 							onBack={() => setSelectedChatId(null)}
 							onLoadOlder={handleLoadOlderMessages}
+							onStartCall={selectedConversation.type === "dm" ? handleStartCall : undefined}
+							onJoinCall={selectedConversation.type === "dm" ? handleJoinCall : undefined}
 						/>
 						<MessageInput onSend={handleSendMessage} />
 					</>

@@ -155,3 +155,31 @@ export async function fetchChatSettings(): Promise<{ enterSendsMessage: boolean 
 
 	return response.json();
 }
+
+export async function startCall(conversationId: number): Promise<{ callId: number; messageId: number }> {
+	const response = await fetch("/api/calls/start", {
+		method: "POST",
+		headers: getAuthHeadersWithJson(),
+		body: JSON.stringify({ conversationId }),
+	});
+
+	if (!response.ok) {
+		throw new Error("Failed to start call");
+	}
+
+	const result = await response.json();
+	localStorage.setItem(`call_initiator_${result.messageId}`, "true");
+	return result;
+}
+
+export async function getCallStatus(messageId: number): Promise<{ active: boolean }> {
+	const response = await fetch(`/api/calls/status?messageId=${messageId}`, {
+		headers: getAuthHeaders(),
+	});
+
+	if (!response.ok) {
+		throw new Error("Failed to get call status");
+	}
+
+	return response.json();
+}
