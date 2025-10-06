@@ -318,6 +318,28 @@ export default function Chats() {
 		return conv.name || "Unnamed conversation";
 	};
 
+	const formatMessageTime = (timestamp: string) => {
+		const messageDate = new Date(timestamp);
+		const now = new Date();
+		const diffMs = now.getTime() - messageDate.getTime();
+		const diffHours = diffMs / (1000 * 60 * 60);
+
+		if (diffHours < 24) {
+			const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+			if (diffMinutes < 1) {
+				return "just now";
+			} else if (diffMinutes < 60) {
+				return `${diffMinutes}m ago`;
+			} else {
+				const hours = Math.floor(diffMinutes / 60);
+				return `${hours}h ago`;
+			}
+		}
+
+		return messageDate.toLocaleString();
+	};
+
 	const handleStartConversation = async (otherUserId: number) => {
 		try {
 			const accessToken = localStorage.getItem("accessToken");
@@ -497,7 +519,7 @@ export default function Chats() {
 												{msg.senderDisplayName}
 											</span>
 											<span className="text-xs text-ctp-subtext0">
-												{new Date(msg.createdAt).toLocaleString()}
+												{formatMessageTime(msg.createdAt)}
 											</span>
 										</div>
 										<div className="text-ctp-text mt-1">{msg.body}</div>
