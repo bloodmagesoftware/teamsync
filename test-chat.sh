@@ -79,6 +79,28 @@ curl -s "$BASE_URL/api/messages?conversationId=$CONV_ID" \
   -H "Authorization: Bearer $USER1_TOKEN" | jq
 
 echo ""
+echo "7a. Checking unread count for User2 (bob) - should have 2 unread..."
+curl -s "$BASE_URL/api/conversations" \
+  -H "Authorization: Bearer $USER2_TOKEN" | jq
+
+echo ""
+echo "7b. User2 (bob) marking conversation as read..."
+LAST_SEQ=$(curl -s "$BASE_URL/api/messages?conversationId=$CONV_ID" \
+  -H "Authorization: Bearer $USER2_TOKEN" | jq -r '.[0].seq')
+curl -s -X POST "$BASE_URL/api/messages/read" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $USER2_TOKEN" \
+  -d "{
+    \"conversationId\": $CONV_ID,
+    \"lastReadSeq\": $LAST_SEQ
+  }" | jq
+
+echo ""
+echo "7c. Checking unread count for User2 (bob) - should be 0 now..."
+curl -s "$BASE_URL/api/conversations" \
+  -H "Authorization: Bearer $USER2_TOKEN" | jq
+
+echo ""
 echo "8. Testing user search for 'bob'..."
 curl -s "$BASE_URL/api/users/search?q=bob" \
   -H "Authorization: Bearer $USER1_TOKEN" | jq

@@ -82,15 +82,49 @@ export default function Chats() {
 					headers: {
 						Authorization: `Bearer ${accessToken}`,
 					},
-				}
+				},
 			);
 
 			if (response.ok) {
 				const data = await response.json();
-				setMessages((data || []).reverse());
+				const messagesArray = (data || []).reverse();
+				setMessages(messagesArray);
+
+				if (messagesArray.length > 0) {
+					const lastMessage = messagesArray[messagesArray.length - 1];
+					updateReadState(conversationId, lastMessage.seq);
+				}
 			}
 		} catch (error) {
 			console.error("Failed to fetch messages:", error);
+		}
+	};
+
+	const updateReadState = async (
+		conversationId: number,
+		lastReadSeq: number,
+	) => {
+		try {
+			const accessToken = localStorage.getItem("accessToken");
+			await fetch("/api/messages/read", {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					conversationId,
+					lastReadSeq,
+				}),
+			});
+
+			setConversations((prev) =>
+				prev.map((conv) =>
+					conv.id === conversationId ? { ...conv, unreadCount: 0 } : conv,
+				),
+			);
+		} catch (error) {
+			console.error("Failed to update read state:", error);
 		}
 	};
 
@@ -114,7 +148,17 @@ export default function Chats() {
 			if (response.ok) {
 				const newMessage = await response.json();
 				setMessages((prev) => [...prev, newMessage]);
-				fetchConversations();
+
+				setConversations((prev) => {
+					const updated = prev.map((conv) =>
+						conv.id === selectedChatId
+							? { ...conv, lastMessageSeq: newMessage.seq, unreadCount: 0 }
+							: conv,
+					);
+					return updated.sort((a, b) => b.lastMessageSeq - a.lastMessageSeq);
+				});
+
+				await updateReadState(selectedChatId, newMessage.seq);
 			}
 		} catch (error) {
 			console.error("Failed to send message:", error);
@@ -122,7 +166,7 @@ export default function Chats() {
 	};
 
 	const selectedConversation = conversations.find(
-		(c) => c.id === selectedChatId
+		(c) => c.id === selectedChatId,
 	);
 
 	const getConversationName = (conv: Conversation) => {
@@ -147,12 +191,14 @@ export default function Chats() {
 			if (response.ok) {
 				const conversation = await response.json();
 				setShowNewConversation(false);
-				
-				const existingConv = conversations.find((c) => c.id === conversation.id);
+
+				const existingConv = conversations.find(
+					(c) => c.id === conversation.id,
+				);
 				if (!existingConv) {
 					setConversations((prev) => [conversation, ...prev]);
 				}
-				
+
 				setSelectedChatId(conversation.id);
 			}
 		} catch (error) {
@@ -288,10 +334,7 @@ export default function Chats() {
 						<div className="flex-1 overflow-y-auto p-4 space-y-4">
 							{messages.map((msg) => (
 								<div key={msg.id} className="flex gap-3">
-									<Avatar
-										size="sm"
-										imageUrl={msg.senderProfileImageUrl}
-									/>
+									<Avatar size="sm" imageUrl={msg.senderProfileImageUrl} />
 									<div className="flex-1">
 										<div className="flex items-baseline gap-2">
 											<span className="font-semibold text-ctp-text">
@@ -370,7 +413,7 @@ function MessageInput({ onSend }: { onSend: (message: string) => void }) {
 				sendMessage();
 			}
 		} else {
-			if (e.key === "Enter" && e.ctrlKey) {
+			if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
 				e.preventDefault();
 				sendMessage();
 			}
@@ -448,7 +491,7 @@ function NewConversationDialog({
 						headers: {
 							Authorization: `Bearer ${accessToken}`,
 						},
-					}
+					},
 				);
 
 				if (response.ok) {
