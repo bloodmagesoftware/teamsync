@@ -69,7 +69,7 @@ export function MessageList({
 								{formatMessageTime(msg.createdAt)}
 							</span>
 						</div>
-						<div className="col-start-2">
+						<div className="col-start-2 max-w-full overflow-auto">
 							<MessageContent body={msg.body} contentType={msg.contentType} />
 						</div>
 					</div>

@@ -93,7 +93,7 @@ export function MessageContent({ body, contentType }: MessageContentProps) {
 			},
 			pre(props) {
 				return (
-					<pre className="bg-ctp-crust p-2 rounded overflow-x-auto my-2">
+					<pre className="bg-ctp-crust max-w-full p-2 text-xs rounded overflow-x-auto my-2">
 						{props.children}
 					</pre>
 				);
