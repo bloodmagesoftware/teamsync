@@ -11,7 +11,7 @@ sql:
         emit_exported_queries: false
         emit_pointers_for_null_types: true
         emit_sql_as_comment: true
-        emit_interface: true
+        emit_interface: false
         omit_unused_structs: false
         output_batch_file_name: batch.sqlc.go
         output_db_file_name: db.sqlc.go

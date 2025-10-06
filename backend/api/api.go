@@ -29,23 +29,23 @@ import (
 
 type Server struct {
 	httpServer *http.Server
-	db         *sql.DB
+	queries    *db.Queries
 }
 
-func New(db *sql.DB) *Server {
+func New(queries *db.Queries) *Server {
 	s := &Server{
-		db: db,
+		queries: queries,
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/auth/login", s.handleLogin)
 	mux.HandleFunc("/api/auth/register", s.handleRegister)
-	mux.Handle("/api/auth/me", auth.RequireAuth(db)(http.HandlerFunc(s.handleMe)))
-	mux.Handle("/api/invitations", auth.RequireAuth(db)(http.HandlerFunc(s.handleInvitations)))
-	mux.Handle("/api/invitations/delete", auth.RequireAuth(db)(http.HandlerFunc(s.handleDeleteInvitation)))
-	mux.Handle("/api/profile/image", auth.RequireAuth(db)(http.HandlerFunc(s.handleProfileImageUpload)))
+	mux.Handle("/api/auth/me", auth.RequireAuth(queries)(http.HandlerFunc(s.handleMe)))
+	mux.Handle("/api/invitations", auth.RequireAuth(queries)(http.HandlerFunc(s.handleInvitations)))
+	mux.Handle("/api/invitations/delete", auth.RequireAuth(queries)(http.HandlerFunc(s.handleDeleteInvitation)))
+	mux.Handle("/api/profile/image", auth.RequireAuth(queries)(http.HandlerFunc(s.handleProfileImageUpload)))
 	mux.HandleFunc("/api/profile/image/", s.handleProfileImageServe)
-	mux.Handle("/api/settings/chat", auth.RequireAuth(db)(http.HandlerFunc(s.handleChatSettings)))
+	mux.Handle("/api/settings/chat", auth.RequireAuth(queries)(http.HandlerFunc(s.handleChatSettings)))
 
 	if frontendDevURL, ok := os.LookupEnv("FRONTEND_DEV_URL"); ok {
 		log.Printf("development mode: proxying frontend requests to %s", frontendDevURL)
@@ -177,8 +177,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queries := db.New(s.db)
-	user, err := queries.GetUserByUsername(r.Context(), req.Username)
+	user, err := s.queries.GetUserByUsername(r.Context(), req.Username)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(authResponse{Success: false, Message: "Invalid credentials"})
@@ -199,11 +198,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := queries.DeleteUserTokens(r.Context(), user.ID); err != nil {
+	if err := s.queries.DeleteUserTokens(r.Context(), user.ID); err != nil {
 		log.Printf("warning: failed to delete old tokens: %v", err)
 	}
 
-	_, err = queries.CreateOAuthToken(r.Context(), user.ID, tokenPair.AccessToken, tokenPair.RefreshToken, tokenPair.AccessTokenExpiresAt, tokenPair.RefreshTokenExpiresAt)
+	_, err = s.queries.CreateOAuthToken(r.Context(), user.ID, tokenPair.AccessToken, tokenPair.RefreshToken, tokenPair.AccessTokenExpiresAt, tokenPair.RefreshTokenExpiresAt)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(authResponse{Success: false, Message: "Server error"})
@@ -240,9 +239,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queries := db.New(s.db)
-
-	_, err := queries.GetInvitationByCode(r.Context(), req.InvitationCode)
+	_, err := s.queries.GetInvitationByCode(r.Context(), req.InvitationCode)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(authResponse{Success: false, Message: "Invalid invitation code"})
@@ -263,14 +260,14 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := queries.CreateUser(r.Context(), req.Username, hash, salt)
+	user, err := s.queries.CreateUser(r.Context(), req.Username, hash, salt)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(authResponse{Success: false, Message: "Username already taken"})
 		return
 	}
 
-	if err := queries.DeleteInvitationCode(r.Context(), req.InvitationCode); err != nil {
+	if err := s.queries.DeleteInvitationCode(r.Context(), req.InvitationCode); err != nil {
 		log.Printf("warning: failed to delete invitation code: %v", err)
 	}
 
@@ -281,7 +278,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = queries.CreateOAuthToken(r.Context(), user.ID, tokenPair.AccessToken, tokenPair.RefreshToken, tokenPair.AccessTokenExpiresAt, tokenPair.RefreshTokenExpiresAt)
+	_, err = s.queries.CreateOAuthToken(r.Context(), user.ID, tokenPair.AccessToken, tokenPair.RefreshToken, tokenPair.AccessTokenExpiresAt, tokenPair.RefreshTokenExpiresAt)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(authResponse{Success: false, Message: "Server error"})
@@ -323,8 +320,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queries := db.New(s.db)
-	user, err := queries.GetUser(r.Context(), userID)
+	user, err := s.queries.GetUser(r.Context(), userID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -357,11 +353,9 @@ func (s *Server) handleInvitations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queries := db.New(s.db)
-
 	switch r.Method {
 	case http.MethodGet:
-		invitations, err := queries.ListInvitationsByUser(r.Context(), &userID)
+		invitations, err := s.queries.ListInvitationsByUser(r.Context(), &userID)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -386,7 +380,7 @@ func (s *Server) handleInvitations(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		invitation, err := queries.CreateInvitationCode(r.Context(), code, &userID)
+		invitation, err := s.queries.CreateInvitationCode(r.Context(), code, &userID)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -426,8 +420,7 @@ func (s *Server) handleDeleteInvitation(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	queries := db.New(s.db)
-	if err := queries.DeleteInvitationById(r.Context(), req.ID, &userID); err != nil {
+	if err := s.queries.DeleteInvitationById(r.Context(), req.ID, &userID); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -507,8 +500,7 @@ func (s *Server) handleProfileImageUpload(w http.ResponseWriter, r *http.Request
 	hash := sha256.Sum256(imageData)
 	hashStr := hex.EncodeToString(hash[:])
 
-	queries := db.New(s.db)
-	if err := queries.UpdateUserProfileImage(r.Context(), imageData, &hashStr, userID); err != nil {
+	if err := s.queries.UpdateUserProfileImage(r.Context(), imageData, &hashStr, userID); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to save image"})
 		return
@@ -535,8 +527,7 @@ func (s *Server) handleProfileImageServe(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	queries := db.New(s.db)
-	users, err := queries.ListUsers(r.Context())
+	users, err := s.queries.ListUsers(r.Context())
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -545,7 +536,7 @@ func (s *Server) handleProfileImageServe(w http.ResponseWriter, r *http.Request)
 	var imageData []byte
 	for _, user := range users {
 		if user.ProfileImageHash != nil && *user.ProfileImageHash == hash {
-			imageData, err = queries.GetUserProfileImage(r.Context(), user.ID)
+			imageData, err = s.queries.GetUserProfileImage(r.Context(), user.ID)
 			if err != nil {
 				w.WriteHeader(http.StatusNotFound)
 				return
@@ -579,11 +570,9 @@ func (s *Server) handleChatSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queries := db.New(s.db)
-
 	switch r.Method {
 	case http.MethodGet:
-		settings, err := queries.GetUserSettings(r.Context(), userID)
+		settings, err := s.queries.GetUserSettings(r.Context(), userID)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				w.Header().Set("Content-Type", "application/json")
@@ -608,7 +597,7 @@ func (s *Server) handleChatSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		settings, err := queries.UpsertUserSettings(r.Context(), userID, req.EnterSendsMessage)
+		settings, err := s.queries.UpsertUserSettings(r.Context(), userID, req.EnterSendsMessage)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return

@@ -3,7 +3,6 @@ package auth
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 	"strings"
 	"time"
@@ -15,7 +14,7 @@ type contextKey string
 
 const UserIDKey contextKey = "userID"
 
-func RequireAuth(database *sql.DB) func(http.Handler) http.Handler {
+func RequireAuth(queries *db.Queries) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -31,7 +30,6 @@ func RequireAuth(database *sql.DB) func(http.Handler) http.Handler {
 			}
 
 			accessToken := parts[1]
-			queries := db.New(database)
 
 			token, err := queries.GetTokenByAccessToken(r.Context(), accessToken)
 			if err != nil {

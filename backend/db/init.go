@@ -4,14 +4,13 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 
 	_ "modernc.org/sqlite"
 )
 
-var globalDB *sql.DB
-
-func Init(dbPath string) (*sql.DB, error) {
+func Init(dbPath string) (*Queries, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -29,17 +28,36 @@ func Init(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	globalDB = db
-	return db, nil
+	return New(db), nil
 }
 
-func Close() error {
-	if globalDB != nil {
-		return globalDB.Close()
+// Close closes the querier.
+func (q *Queries) Close() error {
+	if q.db == nil {
+		return nil
 	}
-	return nil
+	switch db := q.db.(type) {
+	case *sql.DB:
+		return db.Close()
+	case *sql.Tx:
+		return db.Rollback()
+	default:
+		return fmt.Errorf("unexpected type %T for querier db", q.db)
+	}
 }
 
-func Get() *sql.DB {
-	return globalDB
+// Begin starts a transaction.
+func (q *Queries) Begin() (*QuerierTx, error) {
+	if q.db == nil {
+		return nil, errors.New("db is nil")
+	}
+	if db, ok := q.db.(*sql.DB); ok {
+		sqlTx, err := db.Begin()
+		if err != nil {
+			return nil, fmt.Errorf("failed to begin transaction: %w", err)
+		}
+		return NewTx(sqlTx), nil
+	} else {
+		return nil, fmt.Errorf("unexpected type %T for querier db", q.db)
+	}
 }

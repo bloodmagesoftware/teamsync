@@ -3,7 +3,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -21,7 +20,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to initialize database: %v", err)
 	}
-	defer db.Close()
+	defer database.Close()
 
 	if err := ensureInitialInvitation(database); err != nil {
 		log.Fatalf("failed to ensure initial invitation: %v", err)
@@ -49,9 +48,8 @@ func main() {
 	log.Printf("shutdown signal received")
 }
 
-func ensureInitialInvitation(database *sql.DB) error {
+func ensureInitialInvitation(queries *db.Queries) error {
 	ctx := context.Background()
-	queries := db.New(database)
 
 	count, err := queries.CountUsers(ctx)
 	if err != nil {
