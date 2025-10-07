@@ -1,0 +1,15 @@
+# Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)
+
+services:
+  teamsync:
+    build: .
+    ports:
+      - "8080:8080"
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+    volumes:
+      - ./teamsync_data:/data
+    environment:
+      - TURN_LISTEN_ADDRESS=:3478
+      - TURN_REALM=teamsync
+    restart: unless-stopped

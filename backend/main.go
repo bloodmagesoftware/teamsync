@@ -19,7 +19,7 @@ import (
 )
 
 func main() {
-	database, err := db.Init("teamsync.db")
+	database, err := db.Init("data/teamsync.db")
 	if err != nil {
 		log.Fatalf("failed to initialize database: %v", err)
 	}

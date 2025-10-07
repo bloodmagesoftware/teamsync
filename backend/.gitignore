@@ -4,3 +4,8 @@
 tmp/
 *.sqlc.go
 /teamsync
+*.js
+*.css
+*.map
+*.svg
+*.html

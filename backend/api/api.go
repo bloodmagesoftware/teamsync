@@ -14,6 +14,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/bloodmagesoftware/teamsync/auth"
 	"github.com/bloodmagesoftware/teamsync/db"
+	"github.com/bloodmagesoftware/teamsync/public"
 	"github.com/bloodmagesoftware/teamsync/rtc"
 	"github.com/chai2010/webp"
 	"github.com/nfnt/resize"
@@ -191,24 +193,41 @@ func (s *Server) proxyWebSocket(w http.ResponseWriter, r *http.Request, target *
 }
 
 func (s *Server) handleStaticFiles() http.HandlerFunc {
-	publicDir := "./public"
-	fs := http.FileServer(http.Dir(publicDir))
-
 	return func(w http.ResponseWriter, r *http.Request) {
-		path := filepath.Join(publicDir, r.URL.Path)
-
-		_, err := os.Stat(path)
-		if os.IsNotExist(err) {
-			if !strings.HasPrefix(r.URL.Path, "/api/") {
-				indexPath := filepath.Join(publicDir, "index.html")
-				http.ServeFile(w, r, indexPath)
-				return
-			}
+		if strings.HasPrefix(r.URL.Path, "/api/") {
 			http.NotFound(w, r)
 			return
 		}
 
-		fs.ServeHTTP(w, r)
+		fsPath := strings.TrimPrefix(r.URL.Path, "/")
+		fmt.Printf("serving %s\n", fsPath)
+
+		_, err := fs.Stat(public.Public, fsPath)
+		if os.IsNotExist(err) {
+			fmt.Printf("serving index.html for %s\n", fsPath)
+			w.Header().Set("Content-Type", "text/html")
+			http.ServeFileFS(w, r, public.Public, "index.html")
+			return
+		}
+
+		switch ext := filepath.Ext(fsPath); ext {
+		case ".js":
+			w.Header().Set("Content-Type", "application/javascript")
+		case ".css":
+			w.Header().Set("Content-Type", "text/css")
+		case ".svg":
+			w.Header().Set("Content-Type", "image/svg+xml")
+		case ".png":
+			w.Header().Set("Content-Type", "image/png")
+		case ".jpg":
+			w.Header().Set("Content-Type", "image/jpeg")
+		case ".webp":
+			w.Header().Set("Content-Type", "image/webp")
+		default:
+			fmt.Printf("unknown file extension: %s\n", ext)
+		}
+
+		http.ServeFileFS(w, r, public.Public, fsPath)
 	}
 }
 

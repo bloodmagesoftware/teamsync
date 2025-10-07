@@ -11,11 +11,13 @@ fmt:
     cd backend && go fmt
     cd frontend && pnpm run lint:fix
 
-build:
-    cd frontend && pnpm run build
-    rm -rf backend/public
-    cp -r frontend/dist backend/public
-
 prod:
-    just build
-    cd backend && go run .
+    cd frontend && pnpm install && pnpm run build
+    rm -rf backend/public/assets
+    cp -r frontend/dist/* backend/public/
+    cd backend && go run main.go
+
+clean:
+    rm -rf frontend/dist
+    rm -rf backend/public
+    rm -f backend/teamsync
