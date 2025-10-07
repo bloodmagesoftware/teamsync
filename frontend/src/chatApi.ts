@@ -144,7 +144,7 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
 	return data || [];
 }
 
-export async function fetchChatSettings(): Promise<{ enterSendsMessage: boolean }> {
+export async function fetchChatSettings(): Promise<{ enterSendsMessage: boolean; markdownEnabled: boolean }> {
 	const response = await fetch("/api/settings/chat", {
 		headers: getAuthHeaders(),
 	});

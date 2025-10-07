@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "./UserContext";
+import { useUserSettings } from "./UserSettingsContext";
 import { ArrowLeft } from "react-feather";
 
 type SettingsCategory = "profile" | "invitations" | "chat" | null;
@@ -40,35 +41,19 @@ export default function Settings() {
 		}
 
 		function ChatSettings() {
+			const { settings, refreshSettings } = useUserSettings();
 			const [enterSendsMessage, setEnterSendsMessage] = useState(false);
 			const [markdownEnabled, setMarkdownEnabled] = useState(true);
 			const [loading, setLoading] = useState(true);
 			const [saving, setSaving] = useState(false);
 
 			useEffect(() => {
-				fetchSettings();
-			}, []);
-
-			const fetchSettings = async () => {
-				try {
-					const accessToken = localStorage.getItem("accessToken");
-					const response = await fetch("/api/settings/chat", {
-						headers: {
-							Authorization: `Bearer ${accessToken}`,
-						},
-					});
-
-					if (response.ok) {
-						const data = await response.json();
-						setEnterSendsMessage(data.enterSendsMessage);
-						setMarkdownEnabled(data.markdownEnabled);
-					}
-				} catch (error) {
-					console.error("Failed to fetch chat settings:", error);
-				} finally {
+				if (settings) {
+					setEnterSendsMessage(settings.enterSendsMessage);
+					setMarkdownEnabled(settings.markdownEnabled);
 					setLoading(false);
 				}
-			};
+			}, [settings]);
 
 			const updateEnterSendsMessage = async (value: boolean) => {
 				setSaving(true);
@@ -87,6 +72,7 @@ export default function Settings() {
 						const data = await response.json();
 						setEnterSendsMessage(data.enterSendsMessage);
 						setMarkdownEnabled(data.markdownEnabled);
+						await refreshSettings();
 					}
 				} catch (error) {
 					console.error("Failed to update chat settings:", error);
@@ -112,6 +98,7 @@ export default function Settings() {
 						const data = await response.json();
 						setEnterSendsMessage(data.enterSendsMessage);
 						setMarkdownEnabled(data.markdownEnabled);
+						await refreshSettings();
 					}
 				} catch (error) {
 					console.error("Failed to update chat settings:", error);
