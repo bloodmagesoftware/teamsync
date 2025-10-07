@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, type KeyboardEvent } from "react";
 import { fetchChatSettings } from "../chatApi";
 import { isTouchDevice } from "../chatUtils";
+import { Send } from "react-feather";
 
 export function MessageInput({
 	onSend,
@@ -79,7 +80,7 @@ export function MessageInput({
 					disabled={!message.trim()}
 					className="px-4 py-2 bg-ctp-blue text-ctp-base rounded not-disabled:hover:bg-ctp-sapphire disabled:opacity-50 disabled:cursor-not-allowed"
 				>
-					Send
+					<Send className="w-4 h-4" />
 				</button>
 			</div>
 		</div>

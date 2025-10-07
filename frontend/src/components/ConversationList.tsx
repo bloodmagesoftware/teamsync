@@ -26,24 +26,17 @@ export function ConversationList({
 		<aside
 			className={`${selectedChatId ? "hidden md:flex" : "flex"} w-full md:w-60 bg-ctp-mantle flex-col`}
 		>
-			<div className="p-4 md:hidden flex items-center justify-between border-b border-ctp-surface0">
-				<h1 className="text-xl font-bold">TeamSync</h1>
+			<div className="p-4">
+				<h1 className="block text-xl font-bold">TeamSync</h1>
 				<button
 					onClick={() => navigate("/settings")}
-					className="p-2 hover:bg-ctp-surface0 rounded transition-colors"
+					className="block p-2 md:hidden hover:bg-ctp-surface0 rounded transition-colors"
 				>
 					<Avatar size="sm" />
 				</button>
-			</div>
-
-			<div className="hidden md:block p-4 border-b border-ctp-surface0">
-				<h1 className="text-xl font-bold">TeamSync</h1>
-			</div>
-
-			<div className="p-2 border-b border-ctp-surface0">
 				<button
 					onClick={onNewConversation}
-					className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-ctp-blue text-ctp-base rounded hover:bg-ctp-sapphire transition-colors"
+					className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2 bg-ctp-blue text-ctp-base rounded hover:bg-ctp-sapphire transition-colors"
 				>
 					<Plus className="w-4 h-4" />
 					<span>Start a conversation</span>

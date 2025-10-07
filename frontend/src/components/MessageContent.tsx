@@ -16,7 +16,12 @@ interface MessageContentProps {
 	onJoinCall?: () => void;
 }
 
-export function MessageContent({ body, contentType, messageId, onJoinCall }: MessageContentProps) {
+export function MessageContent({
+	body,
+	contentType,
+	messageId,
+	onJoinCall,
+}: MessageContentProps) {
 	const [isDark, setIsDark] = useState(true);
 	const [callActive, setCallActive] = useState(true);
 	const highlightStyleRef = useRef<HTMLStyleElement | null>(null);
@@ -182,7 +187,7 @@ export function MessageContent({ body, contentType, messageId, onJoinCall }: Mes
 	if (contentType === "application/call") {
 		if (!callActive) {
 			return (
-				<div className="flex items-center gap-2 px-4 py-2 bg-ctp-surface0 text-ctp-subtext0 rounded">
+				<div className="inline-flex items-center gap-2 px-4 py-2 bg-ctp-surface0 text-ctp-subtext0 rounded">
 					<Video className="w-4 h-4" />
 					Call Ended
 				</div>
@@ -191,7 +196,7 @@ export function MessageContent({ body, contentType, messageId, onJoinCall }: Mes
 		return (
 			<button
 				onClick={onJoinCall}
-				className="flex items-center gap-2 px-4 py-2 bg-ctp-blue text-white rounded hover:bg-ctp-sapphire transition-colors"
+				className="inline-flex items-center gap-2 px-4 py-2 bg-ctp-blue text-white rounded hover:bg-ctp-sapphire transition-colors"
 			>
 				<Video className="w-4 h-4" />
 				Join Video Call
