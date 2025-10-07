@@ -70,7 +70,7 @@ func New(queries *db.Queries, turnConfig rtc.Config) *Server {
 		mux.HandleFunc("/", s.handleDevProxy(frontendDevURL))
 	} else {
 		log.Printf("production mode: serving static files from ./public")
-		mux.HandleFunc("/", s.handleStaticFiles())
+		mux.HandleFunc("/", s.handleStaticFiles)
 	}
 
 	s.httpServer = &http.Server{
@@ -192,43 +192,36 @@ func (s *Server) proxyWebSocket(w http.ResponseWriter, r *http.Request, target *
 	<-done
 }
 
-func (s *Server) handleStaticFiles() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") {
-			http.NotFound(w, r)
-			return
-		}
+func (s *Server) handleStaticFiles(w http.ResponseWriter, r *http.Request) {
+	fsPath := strings.TrimPrefix(r.URL.Path, "/")
+	fmt.Printf("serving %s\n", fsPath)
 
-		fsPath := strings.TrimPrefix(r.URL.Path, "/")
-		fmt.Printf("serving %s\n", fsPath)
-
-		_, err := fs.Stat(public.Public, fsPath)
-		if os.IsNotExist(err) {
-			fmt.Printf("serving index.html for %s\n", fsPath)
-			w.Header().Set("Content-Type", "text/html")
-			http.ServeFileFS(w, r, public.Public, "index.html")
-			return
-		}
-
-		switch ext := filepath.Ext(fsPath); ext {
-		case ".js":
-			w.Header().Set("Content-Type", "application/javascript")
-		case ".css":
-			w.Header().Set("Content-Type", "text/css")
-		case ".svg":
-			w.Header().Set("Content-Type", "image/svg+xml")
-		case ".png":
-			w.Header().Set("Content-Type", "image/png")
-		case ".jpg":
-			w.Header().Set("Content-Type", "image/jpeg")
-		case ".webp":
-			w.Header().Set("Content-Type", "image/webp")
-		default:
-			fmt.Printf("unknown file extension: %s\n", ext)
-		}
-
-		http.ServeFileFS(w, r, public.Public, fsPath)
+	_, err := fs.Stat(public.Public, fsPath)
+	if os.IsNotExist(err) {
+		fmt.Printf("serving index.html for %s\n", fsPath)
+		w.Header().Set("Content-Type", "text/html")
+		http.ServeFileFS(w, r, public.Public, "index.html")
+		return
 	}
+
+	switch ext := filepath.Ext(fsPath); ext {
+	case ".js":
+		w.Header().Set("Content-Type", "application/javascript")
+	case ".css":
+		w.Header().Set("Content-Type", "text/css")
+	case ".svg":
+		w.Header().Set("Content-Type", "image/svg+xml")
+	case ".png":
+		w.Header().Set("Content-Type", "image/png")
+	case ".jpg":
+		w.Header().Set("Content-Type", "image/jpeg")
+	case ".webp":
+		w.Header().Set("Content-Type", "image/webp")
+	default:
+		fmt.Printf("unknown file extension: %s\n", ext)
+	}
+
+	http.ServeFileFS(w, r, public.Public, fsPath)
 }
 
 func (s *Server) Start() error {
@@ -241,6 +234,7 @@ func (s *Server) Start() error {
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	log.Printf("shutting down API server")
+	evtMgr.shutdownAll()
 	return s.httpServer.Shutdown(ctx)
 }
 

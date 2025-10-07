@@ -26,12 +26,14 @@ type Event struct {
 }
 
 type eventManager struct {
-	mu      sync.RWMutex
-	clients map[int64]map[chan Event]bool
+	mu       sync.RWMutex
+	clients  map[int64]map[chan Event]bool
+	shutdown chan struct{}
 }
 
 var evtMgr = &eventManager{
-	clients: make(map[int64]map[chan Event]bool),
+	clients:  make(map[int64]map[chan Event]bool),
+	shutdown: make(chan struct{}),
 }
 
 func (em *eventManager) addClient(userID int64, ch chan Event) {
@@ -49,12 +51,29 @@ func (em *eventManager) removeClient(userID int64, ch chan Event) {
 	defer em.mu.Unlock()
 
 	if clients, ok := em.clients[userID]; ok {
-		delete(clients, ch)
-		if len(clients) == 0 {
-			delete(em.clients, userID)
+		if _, exists := clients[ch]; exists {
+			delete(clients, ch)
+			close(ch)
+			if len(clients) == 0 {
+				delete(em.clients, userID)
+			}
 		}
 	}
-	close(ch)
+}
+
+func (em *eventManager) shutdownAll() {
+	close(em.shutdown)
+
+	em.mu.Lock()
+	defer em.mu.Unlock()
+
+	for userID, clients := range em.clients {
+		for ch := range clients {
+			close(ch)
+			delete(clients, ch)
+		}
+		delete(em.clients, userID)
+	}
 }
 
 func (em *eventManager) broadcast(userID int64, event Event) {
@@ -129,7 +148,12 @@ func (s *Server) handleEventStream(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
 			return
-		case event := <-eventChan:
+		case <-evtMgr.shutdown:
+			return
+		case event, ok := <-eventChan:
+			if !ok {
+				return
+			}
 			data, err := json.Marshal(event)
 			if err != nil {
 				continue

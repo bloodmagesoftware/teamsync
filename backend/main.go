@@ -19,11 +19,18 @@ import (
 )
 
 func main() {
+	_ = os.MkdirAll("data", 0755)
 	database, err := db.Init("data/teamsync.db")
 	if err != nil {
 		log.Fatalf("failed to initialize database: %v", err)
 	}
-	defer database.Close()
+	defer func() {
+		if err := database.Close(); err != nil {
+			log.Printf("error during database shutdown: %v", err)
+		} else {
+			log.Printf("database shutdown successfully")
+		}
+	}()
 
 	if err := ensureInitialInvitation(database); err != nil {
 		log.Fatalf("failed to ensure initial invitation: %v", err)
@@ -50,6 +57,8 @@ func main() {
 	defer func() {
 		if err := turnServer.Close(); err != nil {
 			log.Printf("error during TURN shutdown: %v", err)
+		} else {
+			log.Printf("TURN shutdown successfully")
 		}
 	}()
 
@@ -59,6 +68,8 @@ func main() {
 		defer cancel()
 		if err := server.Shutdown(ctx); err != nil {
 			log.Printf("error during server shutdown: %v", err)
+		} else {
+			log.Printf("server shutdown successfully")
 		}
 	}()
 
@@ -71,7 +82,6 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	<-quit
-	database.Close()
 
 	log.Printf("shutdown signal received")
 }
