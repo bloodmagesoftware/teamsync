@@ -374,10 +374,10 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contentType := "text/plain"
+	contentType := "text/markdown"
 	settings, err := s.queries.GetUserSettings(r.Context(), userID)
-	if err == nil && settings.MarkdownEnabled {
-		contentType = "text/markdown"
+	if err == nil && !settings.MarkdownEnabled {
+		contentType = "text/plain"
 	}
 
 	message, err := tx.CreateMessage(r.Context(), conversationID, conv.LastMessageSeq, userID, contentType, req.Body, req.ReplyToID)
