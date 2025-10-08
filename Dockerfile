@@ -8,7 +8,7 @@ RUN corepack enable && pnpm install && pnpm run build
 
 FROM ghcr.io/tsukinoko-kun/go-common:alpine AS backend
 ENV CGO_ENABLED=1
-RUN apk add --no-cache git build-base pkgconfig musl-dev
+RUN apk add --no-cache git build-base pkgconfig
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
@@ -17,9 +17,10 @@ COPY --from=frontend /app/frontend/dist/assets ./public/assets
 COPY --from=frontend /app/frontend/dist/*.html ./public/
 COPY --from=frontend /app/frontend/dist/*.svg ./public/
 RUN sqlc generate && \
-    go build -a -installsuffix cgo -ldflags="-linkmode external -extldflags '-static' -s -w" -o teamsync main.go
+    go build -ldflags="-s -w" -o teamsync main.go
 
-FROM scratch
+FROM alpine:latest
+RUN apk add --no-cache ca-certificates
 COPY --from=backend /app/backend/teamsync /teamsync
 VOLUME /data
 ENTRYPOINT ["/teamsync"]
