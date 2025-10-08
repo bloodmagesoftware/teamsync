@@ -144,7 +144,10 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
 	return data || [];
 }
 
-export async function fetchChatSettings(): Promise<{ enterSendsMessage: boolean; markdownEnabled: boolean }> {
+export async function fetchChatSettings(): Promise<{
+	enterSendsMessage: boolean;
+	markdownEnabled: boolean;
+}> {
 	const response = await fetch("/api/settings/chat", {
 		headers: getAuthHeaders(),
 	});
@@ -156,7 +159,9 @@ export async function fetchChatSettings(): Promise<{ enterSendsMessage: boolean;
 	return response.json();
 }
 
-export async function startCall(conversationId: number): Promise<{ callId: number; messageId: number }> {
+export async function startCall(
+	conversationId: number,
+): Promise<{ callId: number; messageId: number }> {
 	const response = await fetch("/api/calls/start", {
 		method: "POST",
 		headers: getAuthHeadersWithJson(),
@@ -164,7 +169,7 @@ export async function startCall(conversationId: number): Promise<{ callId: numbe
 	});
 
 	if (!response.ok) {
-		throw new Error("Failed to start call");
+		throw new Error("startCall: Failed to start call");
 	}
 
 	const result = await response.json();
@@ -172,7 +177,9 @@ export async function startCall(conversationId: number): Promise<{ callId: numbe
 	return result;
 }
 
-export async function getCallStatus(messageId: number): Promise<{ active: boolean }> {
+export async function getCallStatus(
+	messageId: number,
+): Promise<{ active: boolean }> {
 	const response = await fetch(`/api/calls/status?messageId=${messageId}`, {
 		headers: getAuthHeaders(),
 	});

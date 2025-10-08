@@ -15,7 +15,7 @@ prod:
     cd frontend && pnpm install && pnpm run build
     rm -rf backend/public/assets
     cp -r frontend/dist/* backend/public/
-    cd backend && go run main.go
+    cd backend && sqlc generate && go run main.go
 
 clean:
     rm -rf frontend/dist

@@ -100,8 +100,9 @@ func (s *Server) handleStartCall(w http.ResponseWriter, r *http.Request) {
 
 	activeCall, err := s.queries.GetActiveCallByConversation(r.Context(), req.ConversationID)
 	if err == nil && activeCall.ID != 0 {
+		log.Printf("Call already active in conversation %d: call ID %d, message ID %d", req.ConversationID, activeCall.ID, activeCall.MessageID)
 		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(map[string]string{"error": "A call is already active"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "A call is already active", "messageId": strconv.FormatInt(activeCall.MessageID, 10)})
 		return
 	}
 
@@ -123,7 +124,7 @@ func (s *Server) handleStartCall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message, err := tx.CreateMessage(r.Context(), req.ConversationID, conv.LastMessageSeq, userID, "application/call", "", nil, false, nil)
+	message, err := tx.CreateMessage(r.Context(), req.ConversationID, conv.LastMessageSeq, userID, "application/call", "", nil)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return

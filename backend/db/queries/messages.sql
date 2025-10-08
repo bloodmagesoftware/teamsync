@@ -1,8 +1,8 @@
 -- Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)
 
 -- name: CreateMessage :one
-INSERT INTO messages (conversation_id, seq, sender_id, content_type, body, encrypted_body, is_encrypted, reply_to_id, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+INSERT INTO messages (conversation_id, seq, sender_id, content_type, body, reply_to_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 RETURNING *;
 
 -- name: GetConversationMessages :many
@@ -42,7 +42,7 @@ SELECT * FROM messages WHERE id = ?;
 
 -- name: UpdateMessage :exec
 UPDATE messages 
-SET body = ?, encrypted_body = ?, is_encrypted = ?, edited_at = CURRENT_TIMESTAMP
+SET body = ?, edited_at = CURRENT_TIMESTAMP
 WHERE id = ? AND sender_id = ? AND deleted_at IS NULL;
 
 -- name: DeleteMessage :exec

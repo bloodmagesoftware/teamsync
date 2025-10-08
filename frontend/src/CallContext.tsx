@@ -136,7 +136,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 			});
 
 			if (!response.ok) {
-				throw new Error("Failed to start call");
+				throw new Error("CallProvider startCall: Failed to start call");
 			}
 
 			const result = await response.json();
@@ -373,10 +373,32 @@ async function initializeCall(
 }> {
 	const iceServers = await loadIceServers();
 
-	const localStream = await navigator.mediaDevices.getUserMedia({
-		video: true,
-		audio: true,
-	});
+	let localStream: MediaStream;
+	try {
+		localStream = await navigator.mediaDevices.getUserMedia({
+			video: { facingMode: "user" },
+			audio: { echoCancellation: true, noiseSuppression: true },
+		});
+	} catch (error) {
+		console.error(
+			"Failed to get user media with preferred constraints:",
+			error,
+		);
+		try {
+			localStream = await navigator.mediaDevices.getUserMedia({
+				video: true,
+				audio: true,
+			});
+		} catch (fallbackError) {
+			console.error(
+				"Failed to get user media with basic constraints:",
+				fallbackError,
+			);
+			throw new Error(
+				"Could not access camera or microphone. Please check your browser permissions.",
+			);
+		}
+	}
 
 	const localCameraStream = localStream.clone();
 

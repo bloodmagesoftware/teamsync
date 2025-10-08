@@ -192,11 +192,9 @@ func (s *Server) proxyWebSocket(w http.ResponseWriter, r *http.Request, target *
 
 func (s *Server) handleStaticFiles(w http.ResponseWriter, r *http.Request) {
 	fsPath := strings.TrimPrefix(r.URL.Path, "/")
-	fmt.Printf("serving %s\n", fsPath)
 
 	_, err := fs.Stat(public.Public, fsPath)
 	if os.IsNotExist(err) {
-		fmt.Printf("serving index.html for %s\n", fsPath)
 		w.Header().Set("Content-Type", "text/html")
 		http.ServeFileFS(w, r, public.Public, "index.html")
 		return
@@ -211,10 +209,14 @@ func (s *Server) handleStaticFiles(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/svg+xml")
 	case ".png":
 		w.Header().Set("Content-Type", "image/png")
-	case ".jpg":
+	case ".jpg", ".jpeg":
 		w.Header().Set("Content-Type", "image/jpeg")
 	case ".webp":
 		w.Header().Set("Content-Type", "image/webp")
+	case ".mp4":
+		w.Header().Set("Content-Type", "video/mp4")
+	case ".webm":
+		w.Header().Set("Content-Type", "video/webm")
 	default:
 		fmt.Printf("unknown file extension: %s\n", ext)
 	}

@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -193,7 +194,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		for i, msg := range msgs {
 			response[i] = s.convertToMessageResponse(msg.ID, msg.ConversationID, msg.Seq, msg.SenderID,
 				msg.SenderUsername, msg.SenderProfileImageHash, msg.CreatedAt, msg.EditedAt,
-				msg.ContentType, msg.Body, msg.EncryptedBody, msg.IsEncrypted, msg.ReplyToID)
+				msg.ContentType, msg.Body, msg.ReplyToID)
 		}
 	} else if beforeStr != "" {
 		beforeTime, err := time.Parse(time.RFC3339, beforeStr)
@@ -210,7 +211,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		for i, msg := range msgs {
 			response[i] = s.convertToMessageResponse(msg.ID, msg.ConversationID, msg.Seq, msg.SenderID,
 				msg.SenderUsername, msg.SenderProfileImageHash, msg.CreatedAt, msg.EditedAt,
-				msg.ContentType, msg.Body, msg.EncryptedBody, msg.IsEncrypted, msg.ReplyToID)
+				msg.ContentType, msg.Body, msg.ReplyToID)
 		}
 	} else {
 		offsetStr := r.URL.Query().Get("offset")
@@ -229,7 +230,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		for i, msg := range msgs {
 			response[i] = s.convertToMessageResponse(msg.ID, msg.ConversationID, msg.Seq, msg.SenderID,
 				msg.SenderUsername, msg.SenderProfileImageHash, msg.CreatedAt, msg.EditedAt,
-				msg.ContentType, msg.Body, msg.EncryptedBody, msg.IsEncrypted, msg.ReplyToID)
+				msg.ContentType, msg.Body, msg.ReplyToID)
 		}
 	}
 
@@ -239,7 +240,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) convertToMessageResponse(id, conversationID, seq, senderID int64,
 	senderUsername string, senderProfileImageHash *string, createdAt time.Time, editedAt *time.Time,
-	contentType, body string, encryptedBody *string, isEncrypted bool, replyToID *int64) messageResponse {
+	contentType, encryptedBody string, replyToID *int64) messageResponse {
 
 	var profileImageURL *string
 	if senderProfileImageHash != nil {
@@ -253,12 +254,13 @@ func (s *Server) convertToMessageResponse(id, conversationID, seq, senderID int6
 		editedAtStr = &str
 	}
 
-	messageBody := body
-	if isEncrypted && encryptedBody != nil {
-		decrypted, err := crypto.DecryptMessage(*encryptedBody, conversationID)
-		if err == nil {
-			messageBody = decrypted
-		}
+	decrypted, err := crypto.DecryptMessage(encryptedBody, conversationID)
+	var messageBody string
+	if err != nil {
+		log.Printf("Failed to decrypt message %d in conversation %d: %v", id, conversationID, err)
+		messageBody = "[Message could not be decrypted]"
+	} else {
+		messageBody = decrypted
 	}
 
 	return messageResponse{
@@ -391,11 +393,12 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 	encryptedBody, err := crypto.EncryptMessage(req.Body, conversationID)
 	if err != nil {
+		log.Printf("Error encrypting message: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	message, err := tx.CreateMessage(r.Context(), conversationID, conv.LastMessageSeq, userID, contentType, "", &encryptedBody, true, req.ReplyToID)
+	message, err := tx.CreateMessage(r.Context(), conversationID, conv.LastMessageSeq, userID, contentType, encryptedBody, req.ReplyToID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -475,7 +478,9 @@ func (s *Server) handleUpdateReadState(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.queries.UpdateReadState(r.Context(), req.ConversationID, userID, req.LastReadSeq); err != nil {
+		log.Printf("Failed to update read state for user %d in conversation %d: %v", userID, req.ConversationID, err)
 		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to update read state"})
 		return
 	}
 

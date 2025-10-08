@@ -45,7 +45,5 @@ SET last_message_seq = last_message_seq + 1
 WHERE id = ?;
 
 -- name: UpdateReadState :exec
-INSERT INTO conversation_read_state (conversation_id, user_id, last_read_seq, last_read_at)
-VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-ON CONFLICT(conversation_id, user_id) 
-DO UPDATE SET last_read_seq = excluded.last_read_seq, last_read_at = CURRENT_TIMESTAMP;
+INSERT OR REPLACE INTO conversation_read_state (conversation_id, user_id, last_read_seq, last_read_at)
+VALUES (?, ?, ?, CURRENT_TIMESTAMP);

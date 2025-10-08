@@ -117,11 +117,12 @@ func DecryptMessage(ciphertext string, conversationID int64) (string, error) {
 		return "", errors.New("ciphertext too short")
 	}
 
-	nonce, ciphertextBytes := data[:nonceSize], data[nonceSize:]
+	nonce := data[:nonceSize]
+	ciphertextBytes := data[nonceSize:]
 
 	additionalData := []byte(fmt.Sprintf("conv:%d", conversationID))
 
-	plaintext, err := encryptor.cipher.Open(nil, nonce, append(nonce, ciphertextBytes...), additionalData)
+	plaintext, err := encryptor.cipher.Open(nil, nonce, ciphertextBytes, additionalData)
 	if err != nil {
 		return "", fmt.Errorf("failed to decrypt: %w", err)
 	}

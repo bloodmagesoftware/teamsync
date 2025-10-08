@@ -249,7 +249,7 @@ export default function Chats() {
 				profileImageUrl: selectedConversation.otherUser.profileImageUrl,
 			});
 		} catch (error) {
-			console.error("Failed to start call:", error);
+			console.error("Chats: Failed to start call:", error);
 		}
 	};
 
