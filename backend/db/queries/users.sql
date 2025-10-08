@@ -11,7 +11,10 @@ INSERT INTO users (username, password_hash, password_salt)
 VALUES (?, ?, ?)
 RETURNING *;
 
--- name: DeleteUser :exec
+-- name: DeleteUser :one
+SELECT profile_image_hash FROM users WHERE id = ? LIMIT 1;
+
+-- name: DeleteUserById :exec
 DELETE FROM users
 WHERE id = ?;
 
@@ -36,11 +39,14 @@ SELECT * FROM invitation_codes WHERE created_by = ? ORDER BY created_at DESC;
 -- name: DeleteInvitationById :exec
 DELETE FROM invitation_codes WHERE id = ? AND created_by = ?;
 
--- name: UpdateUserProfileImage :exec
-UPDATE users SET profile_image = ?, profile_image_hash = ? WHERE id = ?;
+-- name: UpdateUserProfileImageHash :exec
+UPDATE users SET profile_image_hash = ? WHERE id = ?;
 
--- name: GetUserProfileImage :one
-SELECT profile_image FROM users WHERE id = ? LIMIT 1;
+-- name: GetOldUserProfileImageHash :one
+SELECT profile_image_hash FROM users WHERE id = ? LIMIT 1;
+
+-- name: CountProfileImageUsage :one
+SELECT COUNT(*) FROM users WHERE profile_image_hash = ?;
 
 -- name: SearchUsers :many
 SELECT id, username, profile_image_hash FROM users 

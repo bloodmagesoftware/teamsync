@@ -5,9 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -592,13 +590,31 @@ func (s *Server) handleProfileImageUpload(w http.ResponseWriter, r *http.Request
 	}
 
 	imageData := buf.Bytes()
-	hash := sha256.Sum256(imageData)
-	hashStr := hex.EncodeToString(hash[:])
-
-	if err := s.queries.UpdateUserProfileImage(r.Context(), imageData, &hashStr, userID); err != nil {
+	hashStr, err := saveProfileImage(imageData)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to save image"})
 		return
+	}
+
+	oldHashPtr, err := s.queries.GetOldUserProfileImageHash(r.Context(), userID)
+	if err != nil && err != sql.ErrNoRows {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to retrieve old image"})
+		return
+	}
+
+	if err := s.queries.UpdateUserProfileImageHash(r.Context(), &hashStr, userID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to update profile"})
+		return
+	}
+
+	if oldHashPtr != nil && *oldHashPtr != hashStr {
+		count, err := s.queries.CountProfileImageUsage(r.Context(), oldHashPtr)
+		if err == nil && count == 0 {
+			deleteProfileImage(*oldHashPtr)
+		}
 	}
 
 	profileImageURL := fmt.Sprintf("/api/profile/image/%s", hashStr)
@@ -622,25 +638,8 @@ func (s *Server) handleProfileImageServe(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	users, err := s.queries.ListUsers(r.Context())
+	imageData, err := loadProfileImage(hash)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	var imageData []byte
-	for _, user := range users {
-		if user.ProfileImageHash != nil && *user.ProfileImageHash == hash {
-			imageData, err = s.queries.GetUserProfileImage(r.Context(), user.ID)
-			if err != nil {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			break
-		}
-	}
-
-	if len(imageData) == 0 {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
