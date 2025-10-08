@@ -21,4 +21,5 @@ RUN sqlc generate && \
 
 FROM scratch
 COPY --from=backend /app/backend/teamsync /teamsync
+VOLUME /data
 ENTRYPOINT ["/teamsync"]
