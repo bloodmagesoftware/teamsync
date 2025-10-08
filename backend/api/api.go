@@ -360,6 +360,12 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create default user settings for the new user
+	_, err = s.queries.CreateUserSettings(r.Context(), user.ID, false, true)
+	if err != nil {
+		log.Printf("warning: failed to create user settings for user %d: %v", user.ID, err)
+	}
+
 	if err := s.queries.DeleteInvitationCode(r.Context(), req.InvitationCode); err != nil {
 		log.Printf("warning: failed to delete invitation code: %v", err)
 	}
