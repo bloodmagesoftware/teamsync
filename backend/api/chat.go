@@ -254,13 +254,15 @@ func (s *Server) convertToMessageResponse(id, conversationID, seq, senderID int6
 		editedAtStr = &str
 	}
 
-	decrypted, err := crypto.DecryptMessage(encryptedBody, conversationID)
-	var messageBody string
-	if err != nil {
-		log.Printf("Failed to decrypt message %d in conversation %d: %v", id, conversationID, err)
-		messageBody = "[Message could not be decrypted]"
-	} else {
-		messageBody = decrypted
+	messageBody := encryptedBody
+	if crypto.IsEncrypted(encryptedBody) {
+		decrypted, err := crypto.DecryptMessage(encryptedBody, conversationID)
+		if err != nil {
+			log.Printf("Failed to decrypt message %d in conversation %d: %v", id, conversationID, err)
+			messageBody = "[Message could not be decrypted]"
+		} else {
+			messageBody = decrypted
+		}
 	}
 
 	return messageResponse{
@@ -434,7 +436,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		ReplyToID:             req.ReplyToID,
 	}
 
-	go s.BroadcastMessageToConversation(conversationID, msgResp, userID)
+	go s.BroadcastMessageToConversation(conversationID, msgResp)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(msgResp)

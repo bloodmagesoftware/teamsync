@@ -1,87 +1,95 @@
 // Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)
 
-interface Message {
-	id: number;
-	conversationId: number;
-	seq: number;
-	senderId: number;
-	senderUsername: string;
-	senderProfileImageUrl: string | null;
-	createdAt: string;
-	editedAt?: string;
-	contentType: string;
-	body: string;
-	replyToId?: number;
-}
+import { openDB, type DBSchema, type IDBPDatabase } from "idb";
+import type { Conversation, Message } from "./chatUtils";
 
-interface ConversationMeta {
-	conversationId: number;
+interface StoredConversation extends Conversation {
 	lastSyncTimestamp: string;
-	unreadCount: number;
 }
 
-interface CacheMeta {
+interface CacheMetaValue {
 	lastCleanupTimestamp: string;
 }
 
+interface MetadataRecord<T = unknown> {
+	key: string;
+	value: T;
+}
+
+interface TeamSyncDB extends DBSchema {
+	messages: {
+		key: number;
+		value: Message;
+		indexes: {
+			conversationId: number;
+			createdAt: string;
+			"conversationId_createdAt": [number, string];
+		};
+	};
+	conversations: {
+		key: number;
+		value: StoredConversation;
+	};
+	metadata: {
+		key: string;
+		value: MetadataRecord;
+	};
+}
+
 const DB_NAME = "teamsync_cache";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const MESSAGES_STORE = "messages";
 const CONVERSATIONS_STORE = "conversations";
 const META_STORE = "metadata";
 const CACHE_RETENTION_DAYS = 30;
 
 class MessageCache {
-	private db: IDBDatabase | null = null;
-	private initPromise: Promise<void> | null = null;
+	private db: IDBPDatabase<TeamSyncDB> | null = null;
+	private initPromise: Promise<IDBPDatabase<TeamSyncDB>> | null = null;
+
+	private async ensureDb(): Promise<IDBPDatabase<TeamSyncDB>> {
+		if (this.db) {
+			return this.db;
+		}
+
+		if (!this.initPromise) {
+			this.initPromise = openDB<TeamSyncDB>(DB_NAME, DB_VERSION, {
+				upgrade(db, oldVersion) {
+					if (oldVersion < 1) {
+						const messagesStore = db.createObjectStore(MESSAGES_STORE, {
+							keyPath: "id",
+						});
+						messagesStore.createIndex("conversationId", "conversationId", {
+							unique: false,
+						});
+						messagesStore.createIndex("createdAt", "createdAt", {
+							unique: false,
+						});
+						messagesStore.createIndex("conversationId_createdAt", ["conversationId", "createdAt"], {
+							unique: false,
+						});
+
+						db.createObjectStore(CONVERSATIONS_STORE, { keyPath: "id" });
+						db.createObjectStore(META_STORE, { keyPath: "key" });
+						return;
+					}
+
+					if (oldVersion < 2) {
+						if (db.objectStoreNames.contains(CONVERSATIONS_STORE)) {
+							db.deleteObjectStore(CONVERSATIONS_STORE);
+						}
+						db.createObjectStore(CONVERSATIONS_STORE, { keyPath: "id" });
+					}
+				},
+			});
+		}
+
+		this.db = await this.initPromise;
+		return this.db;
+	}
 
 	async init(): Promise<void> {
-		if (this.db) return;
-		if (this.initPromise) return this.initPromise;
-
-		this.initPromise = new Promise((resolve, reject) => {
-			const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-			request.onerror = () => {
-				reject(new Error("Failed to open IndexedDB"));
-			};
-
-			request.onsuccess = () => {
-				this.db = request.result;
-				resolve();
-			};
-
-			request.onupgradeneeded = (event) => {
-				const db = (event.target as IDBOpenDBRequest).result;
-
-				if (!db.objectStoreNames.contains(MESSAGES_STORE)) {
-					const messagesStore = db.createObjectStore(MESSAGES_STORE, {
-						keyPath: "id",
-					});
-					messagesStore.createIndex("conversationId", "conversationId", {
-						unique: false,
-					});
-					messagesStore.createIndex("createdAt", "createdAt", { unique: false });
-					messagesStore.createIndex(
-						"conversationId_createdAt",
-						["conversationId", "createdAt"],
-						{ unique: false },
-					);
-				}
-
-				if (!db.objectStoreNames.contains(CONVERSATIONS_STORE)) {
-					db.createObjectStore(CONVERSATIONS_STORE, {
-						keyPath: "conversationId",
-					});
-				}
-
-				if (!db.objectStoreNames.contains(META_STORE)) {
-					db.createObjectStore(META_STORE, { keyPath: "key" });
-				}
-			};
-		});
-
-		return this.initPromise;
+		await this.ensureDb();
 	}
 
 	async close(): Promise<void> {
@@ -92,247 +100,253 @@ class MessageCache {
 		}
 	}
 
+	async saveConversations(
+		conversations: (Conversation & { lastSyncTimestamp?: string })[],
+	): Promise<void> {
+		if (conversations.length === 0) {
+			return;
+		}
+
+		const db = await this.ensureDb();
+		const tx = db.transaction(CONVERSATIONS_STORE, "readwrite");
+		const store = tx.store;
+
+		for (const conversation of conversations) {
+			const existing = await store.get(conversation.id);
+			const record: StoredConversation = {
+				...existing,
+				...conversation,
+				id: conversation.id,
+				lastSyncTimestamp:
+					conversation.lastSyncTimestamp ??
+					existing?.lastSyncTimestamp ??
+					new Date(0).toISOString(),
+			};
+			await store.put(record);
+		}
+
+		await tx.done;
+	}
+
+	async getConversations(): Promise<StoredConversation[]> {
+		const db = await this.ensureDb();
+		return db.getAll(CONVERSATIONS_STORE);
+	}
+
+	async getConversation(conversationId: number): Promise<StoredConversation | null> {
+		const db = await this.ensureDb();
+		const record = await db.get(CONVERSATIONS_STORE, conversationId);
+		return record ?? null;
+	}
+
+	async updateConversationMeta(
+		conversationId: number,
+		meta: Partial<Pick<StoredConversation, "lastSyncTimestamp" | "unreadCount" | "lastMessageSeq">>,
+	): Promise<void> {
+		const db = await this.ensureDb();
+		const tx = db.transaction(CONVERSATIONS_STORE, "readwrite");
+		const store = tx.store;
+		const existing = (await store.get(conversationId)) ?? null;
+
+		if (!existing) {
+			const record: StoredConversation = {
+				id: conversationId,
+				type: "group",
+				name: null,
+				lastMessageSeq: meta.lastMessageSeq ?? 0,
+				unreadCount: meta.unreadCount ?? 0,
+				lastSyncTimestamp: meta.lastSyncTimestamp ?? new Date(0).toISOString(),
+			};
+			await store.put(record);
+			await tx.done;
+			return;
+		}
+
+		const updated: StoredConversation = {
+			...existing,
+			...meta,
+			lastSyncTimestamp: meta.lastSyncTimestamp ?? existing.lastSyncTimestamp,
+			unreadCount: meta.unreadCount ?? existing.unreadCount,
+			lastMessageSeq: meta.lastMessageSeq ?? existing.lastMessageSeq,
+		};
+
+		await store.put(updated);
+		await tx.done;
+	}
+
 	async saveMessages(messages: Message[]): Promise<void> {
-		await this.init();
-		if (!this.db) throw new Error("Database not initialized");
+		if (messages.length === 0) {
+			return;
+		}
 
-		return new Promise((resolve, reject) => {
-			const tx = this.db!.transaction([MESSAGES_STORE], "readwrite");
-			const store = tx.objectStore(MESSAGES_STORE);
+		const db = await this.ensureDb();
+		const tx = db.transaction(MESSAGES_STORE, "readwrite");
+		const store = tx.store;
 
-			for (const message of messages) {
-				store.put(message);
-			}
+		for (const message of messages) {
+			await store.put(message);
+		}
 
-			tx.oncomplete = () => resolve();
-			tx.onerror = () => reject(tx.error);
-		});
+		await tx.done;
+	}
+
+	async getMessage(messageId: number): Promise<Message | undefined> {
+		const db = await this.ensureDb();
+		return (await db.get(MESSAGES_STORE, messageId)) ?? undefined;
 	}
 
 	async getMessages(
 		conversationId: number,
 		limit?: number,
 	): Promise<Message[]> {
-		await this.init();
-		if (!this.db) throw new Error("Database not initialized");
+		const db = await this.ensureDb();
+		const tx = db.transaction(MESSAGES_STORE, "readonly");
+		const index = tx.store.index("conversationId_createdAt");
+		const range = IDBKeyRange.bound(
+			[conversationId, ""],
+			[conversationId, "\uffff"],
+		);
 
-		return new Promise((resolve, reject) => {
-			const tx = this.db!.transaction([MESSAGES_STORE], "readonly");
-			const store = tx.objectStore(MESSAGES_STORE);
-			const index = store.index("conversationId_createdAt");
-			const range = IDBKeyRange.bound(
-				[conversationId, ""],
-				[conversationId, "\uffff"],
-			);
+		const messages: Message[] = [];
+		let cursor = await index.openCursor(range, "prev");
 
-			const request = index.openCursor(range, "prev");
-			const messages: Message[] = [];
-			let count = 0;
+		while (cursor && (!limit || messages.length < limit)) {
+			messages.push(cursor.value);
+			cursor = await cursor.continue();
+		}
 
-			request.onsuccess = (event) => {
-				const cursor = (event.target as IDBRequest).result;
-				if (cursor && (!limit || count < limit)) {
-					messages.push(cursor.value);
-					count++;
-					cursor.continue();
-				} else {
-					resolve(messages.reverse());
-				}
-			};
-
-			request.onerror = () => reject(request.error);
-		});
+		await tx.done;
+		return messages.reverse();
 	}
 
 	async getMessagesAfter(
 		conversationId: number,
 		afterTimestamp: string,
 	): Promise<Message[]> {
-		await this.init();
-		if (!this.db) throw new Error("Database not initialized");
+		const db = await this.ensureDb();
+		const tx = db.transaction(MESSAGES_STORE, "readonly");
+		const index = tx.store.index("conversationId_createdAt");
+		const range = IDBKeyRange.bound(
+			[conversationId, afterTimestamp],
+			[conversationId, "\uffff"],
+			true,
+			false,
+		);
 
-		return new Promise((resolve, reject) => {
-			const tx = this.db!.transaction([MESSAGES_STORE], "readonly");
-			const store = tx.objectStore(MESSAGES_STORE);
-			const index = store.index("conversationId_createdAt");
-			const range = IDBKeyRange.bound(
-				[conversationId, afterTimestamp],
-				[conversationId, "\uffff"],
-				true,
-				false,
-			);
-
-			const request = index.getAll(range);
-
-			request.onsuccess = () => {
-				const messages = request.result.sort(
-					(a: Message, b: Message) =>
-						new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-				);
-				resolve(messages);
-			};
-
-			request.onerror = () => reject(request.error);
-		});
+		const results = await index.getAll(range);
+		await tx.done;
+		return results.sort(
+			(a, b) =>
+				new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+		);
 	}
 
-	async updateConversationMeta(
+	async getMessagesBefore(
 		conversationId: number,
-		meta: Partial<Omit<ConversationMeta, "conversationId">>,
-	): Promise<void> {
-		await this.init();
-		if (!this.db) throw new Error("Database not initialized");
+		beforeTimestamp: string,
+		limit: number = 50,
+	): Promise<Message[]> {
+		const db = await this.ensureDb();
+		const tx = db.transaction(MESSAGES_STORE, "readonly");
+		const index = tx.store.index("conversationId_createdAt");
+		const range = IDBKeyRange.bound(
+			[conversationId, ""],
+			[conversationId, beforeTimestamp],
+			false,
+			true,
+		);
 
-		return new Promise((resolve, reject) => {
-			const tx = this.db!.transaction([CONVERSATIONS_STORE], "readwrite");
-			const store = tx.objectStore(CONVERSATIONS_STORE);
+		const messages: Message[] = [];
+		let cursor = await index.openCursor(range, "prev");
 
-			const getRequest = store.get(conversationId);
+		while (cursor && messages.length < limit) {
+			messages.push(cursor.value);
+			cursor = await cursor.continue();
+		}
 
-			getRequest.onsuccess = () => {
-				const existing = getRequest.result || {
-					conversationId,
-					lastSyncTimestamp: new Date(0).toISOString(),
-					unreadCount: 0,
-				};
-
-				const updated = { ...existing, ...meta };
-				store.put(updated);
-			};
-
-			tx.oncomplete = () => resolve();
-			tx.onerror = () => reject(tx.error);
-		});
-	}
-
-	async getConversationMeta(
-		conversationId: number,
-	): Promise<ConversationMeta | null> {
-		await this.init();
-		if (!this.db) throw new Error("Database not initialized");
-
-		return new Promise((resolve, reject) => {
-			const tx = this.db!.transaction([CONVERSATIONS_STORE], "readonly");
-			const store = tx.objectStore(CONVERSATIONS_STORE);
-			const request = store.get(conversationId);
-
-			request.onsuccess = () => resolve(request.result || null);
-			request.onerror = () => reject(request.error);
-		});
+		await tx.done;
+		return messages.reverse();
 	}
 
 	async cleanupOldMessages(): Promise<void> {
-		await this.init();
-		if (!this.db) throw new Error("Database not initialized");
+		const db = await this.ensureDb();
+		const metaEntry = (await db.get(META_STORE, "cleanup")) as
+			| MetadataRecord<CacheMetaValue>
+			| undefined;
 
-		const metaTx = this.db.transaction([META_STORE], "readonly");
-		const metaStore = metaTx.objectStore(META_STORE);
-		const metaRequest = metaStore.get("cleanup");
+		const now = new Date();
+		const lastCleanup = metaEntry?.value
+			? new Date(metaEntry.value.lastCleanupTimestamp)
+			: new Date(0);
+		const daysSinceCleanup =
+			(now.getTime() - lastCleanup.getTime()) / (1000 * 60 * 60 * 24);
 
-		return new Promise((resolve, reject) => {
-			metaRequest.onsuccess = () => {
-				const meta: CacheMeta | undefined = metaRequest.result?.value;
-				const now = new Date();
-				const lastCleanup = meta
-					? new Date(meta.lastCleanupTimestamp)
-					: new Date(0);
-				const daysSinceCleanup =
-					(now.getTime() - lastCleanup.getTime()) / (1000 * 60 * 60 * 24);
+		if (daysSinceCleanup < 1) {
+			return;
+		}
 
-				if (daysSinceCleanup < 1) {
-					resolve();
-					return;
-				}
+		const cutoffDate = new Date();
+		cutoffDate.setDate(cutoffDate.getDate() - CACHE_RETENTION_DAYS);
+		const cutoffTimestamp = cutoffDate.toISOString();
 
-				const cutoffDate = new Date();
-				cutoffDate.setDate(cutoffDate.getDate() - CACHE_RETENTION_DAYS);
-				const cutoffTimestamp = cutoffDate.toISOString();
+		const tx = db.transaction([MESSAGES_STORE, META_STORE], "readwrite");
+		const messagesIndex = tx.objectStore(MESSAGES_STORE).index("createdAt");
 
-				const tx = this.db!.transaction(
-					[MESSAGES_STORE, META_STORE],
-					"readwrite",
-				);
-				const messagesStore = tx.objectStore(MESSAGES_STORE);
-				const index = messagesStore.index("createdAt");
-				const range = IDBKeyRange.upperBound(cutoffTimestamp);
+		let cursor = await messagesIndex.openCursor(IDBKeyRange.upperBound(cutoffTimestamp));
+		while (cursor) {
+			await cursor.delete();
+			cursor = await cursor.continue();
+		}
 
-				const request = index.openCursor(range);
-				request.onsuccess = (event) => {
-					const cursor = (event.target as IDBRequest).result;
-					if (cursor) {
-						cursor.delete();
-						cursor.continue();
-					}
-				};
-
-				tx.oncomplete = () => {
-					const updateMetaTx = this.db!.transaction([META_STORE], "readwrite");
-					const updateMetaStore = updateMetaTx.objectStore(META_STORE);
-					updateMetaStore.put({
-						key: "cleanup",
-						value: { lastCleanupTimestamp: now.toISOString() },
-					});
-
-					updateMetaTx.oncomplete = () => resolve();
-					updateMetaTx.onerror = () => reject(updateMetaTx.error);
-				};
-
-				tx.onerror = () => reject(tx.error);
-			};
-
-			metaRequest.onerror = () => reject(metaRequest.error);
+		await tx.objectStore(META_STORE).put({
+			key: "cleanup",
+			value: { lastCleanupTimestamp: now.toISOString() },
 		});
+
+		await tx.done;
 	}
 
 	async clearConversation(conversationId: number): Promise<void> {
-		await this.init();
-		if (!this.db) throw new Error("Database not initialized");
+		const db = await this.ensureDb();
+		const tx = db.transaction([MESSAGES_STORE, CONVERSATIONS_STORE], "readwrite");
+		const messagesIndex = tx.objectStore(MESSAGES_STORE).index("conversationId");
 
-		return new Promise((resolve, reject) => {
-			const tx = this.db!.transaction(
-				[MESSAGES_STORE, CONVERSATIONS_STORE],
-				"readwrite",
-			);
-			const messagesStore = tx.objectStore(MESSAGES_STORE);
-			const conversationsStore = tx.objectStore(CONVERSATIONS_STORE);
-			const index = messagesStore.index("conversationId");
-			const range = IDBKeyRange.only(conversationId);
+		let cursor = await messagesIndex.openCursor(IDBKeyRange.only(conversationId));
+		while (cursor) {
+			await cursor.delete();
+			cursor = await cursor.continue();
+		}
 
-			const request = index.openCursor(range);
-			request.onsuccess = (event) => {
-				const cursor = (event.target as IDBRequest).result;
-				if (cursor) {
-					cursor.delete();
-					cursor.continue();
-				}
-			};
-
-			conversationsStore.delete(conversationId);
-
-			tx.oncomplete = () => resolve();
-			tx.onerror = () => reject(tx.error);
-		});
+		await tx.objectStore(CONVERSATIONS_STORE).delete(conversationId);
+		await tx.done;
 	}
 
 	async clearAll(): Promise<void> {
-		await this.init();
-		if (!this.db) throw new Error("Database not initialized");
+		const db = await this.ensureDb();
+		const tx = db.transaction(
+			[MESSAGES_STORE, CONVERSATIONS_STORE, META_STORE],
+			"readwrite",
+		);
 
-		return new Promise((resolve, reject) => {
-			const tx = this.db!.transaction(
-				[MESSAGES_STORE, CONVERSATIONS_STORE, META_STORE],
-				"readwrite",
-			);
+		await tx.objectStore(MESSAGES_STORE).clear();
+		await tx.objectStore(CONVERSATIONS_STORE).clear();
+		await tx.objectStore(META_STORE).clear();
 
-			tx.objectStore(MESSAGES_STORE).clear();
-			tx.objectStore(CONVERSATIONS_STORE).clear();
-			tx.objectStore(META_STORE).clear();
+		await tx.done;
+	}
 
-			tx.oncomplete = () => resolve();
-			tx.onerror = () => reject(tx.error);
-		});
+	async getLastMessageId(): Promise<number> {
+		const db = await this.ensureDb();
+		const tx = db.transaction(MESSAGES_STORE, "readonly");
+		const cursor = await tx.store.openCursor(null, "prev");
+		await tx.done;
+		if (!cursor) {
+			return 0;
+		}
+		const key = cursor.key;
+		return typeof key === "number" ? key : Number(key);
 	}
 }
 
 export const messageCache = new MessageCache();
-export type { Message, ConversationMeta };
+export type { StoredConversation };

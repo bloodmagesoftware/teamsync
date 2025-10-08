@@ -56,3 +56,14 @@ VALUES (?, ?, ?, ?, ?);
 
 -- name: GetMessageAttachments :many
 SELECT * FROM message_attachments WHERE message_id = ?;
+
+-- name: GetMessagesAfterForUser :many
+SELECT
+    m.*,
+    u.username AS sender_username,
+    u.profile_image_hash AS sender_profile_image_hash
+FROM messages m
+INNER JOIN conversation_participants cp ON cp.conversation_id = m.conversation_id
+INNER JOIN users u ON m.sender_id = u.id
+WHERE cp.user_id = ? AND m.id > ? AND m.deleted_at IS NULL
+ORDER BY m.id ASC;

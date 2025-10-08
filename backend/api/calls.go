@@ -165,7 +165,7 @@ func (s *Server) handleStartCall(w http.ResponseWriter, r *http.Request) {
 		Body:                  message.Body,
 	}
 
-	go s.BroadcastMessageToConversation(req.ConversationID, msgResp, userID)
+	go s.BroadcastMessageToConversation(req.ConversationID, msgResp)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(startCallResponse{
@@ -302,9 +302,58 @@ func (s *Server) readPump(callID int64, c *callConnection) {
 		}
 
 		ctx := context.Background()
+
+		callInfo, err := s.queries.GetCallByID(ctx, callID)
+		if err != nil {
+			if endErr := s.queries.EndCall(ctx, callID); endErr != nil {
+				log.Printf("error ending call: %v", endErr)
+			}
+			return
+		}
+
 		if err := s.queries.EndCall(ctx, callID); err != nil {
 			log.Printf("error ending call: %v", err)
+			return
 		}
+
+		message, err := s.queries.GetMessageByID(ctx, callInfo.MessageID)
+		if err != nil {
+			log.Printf("error loading call message %d: %v", callInfo.MessageID, err)
+			return
+		}
+
+		if err := s.queries.UpdateMessage(ctx, message.Body, message.ID, message.SenderID); err != nil {
+			log.Printf("error marking call message %d as edited: %v", message.ID, err)
+			return
+		}
+
+		updatedMessage, err := s.queries.GetMessageByID(ctx, callInfo.MessageID)
+		if err != nil {
+			log.Printf("error reloading updated call message %d: %v", callInfo.MessageID, err)
+			return
+		}
+
+		sender, err := s.queries.GetUser(ctx, updatedMessage.SenderID)
+		if err != nil {
+			log.Printf("error loading sender %d for call message %d: %v", updatedMessage.SenderID, updatedMessage.ID, err)
+			return
+		}
+
+		msgResp := s.convertToMessageResponse(
+			updatedMessage.ID,
+			updatedMessage.ConversationID,
+			updatedMessage.Seq,
+			updatedMessage.SenderID,
+			sender.Username,
+			sender.ProfileImageHash,
+			updatedMessage.CreatedAt,
+			updatedMessage.EditedAt,
+			updatedMessage.ContentType,
+			updatedMessage.Body,
+			updatedMessage.ReplyToID,
+		)
+
+		go s.BroadcastMessageToConversation(updatedMessage.ConversationID, msgResp)
 	}()
 
 	for {

@@ -1,19 +1,16 @@
 // Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)
-import { useState, useEffect, useRef } from "react";
-import { messageCache } from "./messageCache";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { messageCache, type StoredConversation } from "./messageCache";
 import { eventManager, type Event } from "./eventManager";
 import { ConversationList } from "./components/ConversationList";
 import { MessageList } from "./components/MessageList";
 import { MessageInput } from "./components/MessageInput";
 import { NewConversationDialog } from "./components/NewConversationDialog";
 import {
-	type Conversation,
 	type Message,
 	checkShouldScroll,
 	scrollToBottom,
 	sortConversationsByLastMessage,
-	updateConversationUnreadCount,
-	updateConversationLastMessage,
 } from "./chatUtils";
 import {
 	fetchConversations as apiFetchConversations,
@@ -28,7 +25,7 @@ import { useCall } from "./CallContext";
 export default function Chats() {
 	const { startCall, answerCall } = useCall();
 	const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
-	const [conversations, setConversations] = useState<Conversation[]>([]);
+	const [conversations, setConversations] = useState<StoredConversation[]>([]);
 	const [messages, setMessages] = useState<Message[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [showNewConversation, setShowNewConversation] = useState(false);
@@ -37,20 +34,83 @@ export default function Chats() {
 	const messagesContainerRef = useRef<HTMLDivElement>(null);
 	const shouldScrollToBottom = useRef(false);
 
+	const refreshConversations = useCallback(async () => {
+		try {
+			const stored = await messageCache.getConversations();
+			setConversations(sortConversationsByLastMessage(stored));
+		} catch (error) {
+			console.error("Failed to load conversations from cache:", error);
+		}
+	}, []);
+
+	const refreshMessages = useCallback(async (conversationId: number) => {
+		try {
+			const cached = await messageCache.getMessages(conversationId);
+			setMessages(cached);
+			return cached;
+		} catch (error) {
+			console.error("Failed to load messages from cache:", error);
+			return [];
+		}
+	}, []);
+
+	const syncConversationsFromServer = useCallback(async () => {
+		try {
+			const data = await apiFetchConversations();
+			await messageCache.saveConversations(data);
+			await refreshConversations();
+		} catch (error) {
+			console.error("Failed to fetch conversations:", error);
+		}
+	}, [refreshConversations]);
+
+	const handleUpdateReadState = useCallback(
+		async (conversationId: number, lastReadSeq: number) => {
+			try {
+				await markAsRead(conversationId, lastReadSeq);
+				await messageCache.updateConversationMeta(conversationId, {
+					unreadCount: 0,
+					lastMessageSeq: lastReadSeq,
+				});
+				await refreshConversations();
+			} catch (error) {
+				console.error("Failed to update read state:", error);
+			}
+		},
+		[refreshConversations],
+	);
+
 	useEffect(() => {
+		let isMounted = true;
+
 		const initializeApp = async () => {
-			await messageCache.init();
-			await messageCache.cleanupOldMessages();
-			await loadConversations();
-			eventManager.start();
+			try {
+				await messageCache.init();
+				await messageCache.cleanupOldMessages();
+				if (!isMounted) return;
+
+				eventManager.start(() => messageCache.getLastMessageId());
+
+				await refreshConversations();
+				if (!isMounted) return;
+
+				await syncConversationsFromServer();
+			} catch (error) {
+				console.error("Failed to initialize chat view:", error);
+			} finally {
+				if (isMounted) {
+					setLoading(false);
+				}
+			}
 		};
 
 		initializeApp();
 
 		return () => {
+			isMounted = false;
 			eventManager.stop();
 		};
-	}, []);
+	}, [refreshConversations, syncConversationsFromServer]);
 
 	useEffect(() => {
 		const container = messagesContainerRef.current;
@@ -66,88 +126,124 @@ export default function Chats() {
 
 	useEffect(() => {
 		const handleEvent = async (event: Event) => {
-			if (event.type === "message.new") {
-				const msg = event.data as Message;
-				await messageCache.saveMessages([msg]);
+			if (event.type !== "message.new") {
+				return;
+			}
 
-				if (msg.conversationId === selectedChatId) {
+			const msg = event.data as Message;
+
+			try {
+				const existing = await messageCache.getMessage(msg.id);
+				await messageCache.saveMessages([msg]);
+				const isUpdate = Boolean(existing);
+
+				let shouldRefreshConversations = true;
+				let conversation = await messageCache.getConversation(msg.conversationId);
+				if (!conversation) {
+					await syncConversationsFromServer();
+					conversation = await messageCache.getConversation(msg.conversationId);
+				}
+
+				const isActiveConversation = msg.conversationId === selectedChatId;
+
+				if (isActiveConversation) {
 					const container = messagesContainerRef.current;
 					if (container) {
 						shouldScrollToBottom.current = checkShouldScroll(container);
 					}
-					setMessages((prev) => [...prev, msg]);
-					await handleUpdateReadState(msg.conversationId, msg.seq);
-				} else {
-					setConversations((prev) => {
-						const conv = prev.find((c) => c.id === msg.conversationId);
-						const newUnreadCount = (conv?.unreadCount ?? 0) + 1;
-						return updateConversationUnreadCount(
-							prev,
-							msg.conversationId,
-							newUnreadCount,
-						);
-					});
-				}
 
-				await messageCache.updateConversationMeta(msg.conversationId, {
-					lastSyncTimestamp: msg.createdAt,
-				});
+					await messageCache.updateConversationMeta(msg.conversationId, {
+						lastSyncTimestamp: msg.createdAt,
+						lastMessageSeq: msg.seq,
+						unreadCount: 0,
+					});
+					await refreshMessages(msg.conversationId);
+					if (!isUpdate) {
+						await handleUpdateReadState(msg.conversationId, msg.seq);
+						shouldRefreshConversations = false;
+					}
+				} else {
+					if (isUpdate) {
+						await messageCache.updateConversationMeta(msg.conversationId, {
+							lastSyncTimestamp: msg.createdAt,
+							lastMessageSeq: msg.seq,
+						});
+					} else {
+						const unreadCount = (conversation?.unreadCount ?? 0) + 1;
+						await messageCache.updateConversationMeta(msg.conversationId, {
+							lastSyncTimestamp: msg.createdAt,
+							lastMessageSeq: msg.seq,
+							unreadCount,
+						});
+					}
+				}
+				if (shouldRefreshConversations) {
+					await refreshConversations();
+				}
+			} catch (error) {
+				console.error("Failed to process incoming message event:", error);
+				return;
 			}
 		};
 
 		const unsubscribe = eventManager.addListener(handleEvent);
 		return unsubscribe;
-	}, [selectedChatId]);
+	}, [
+		handleUpdateReadState,
+		refreshConversations,
+		refreshMessages,
+		selectedChatId,
+		syncConversationsFromServer,
+	]);
 
-	useEffect(() => {
-		if (selectedChatId) {
-			loadMessagesForConversation(selectedChatId);
-			const container = messagesContainerRef.current;
-			if (container) {
-				container.scrollTop = container.scrollHeight;
-			}
-		}
-	}, [selectedChatId]);
-
-	const loadConversations = async () => {
+const loadMessagesForConversation = useCallback(
+	async (conversationId: number) => {
 		try {
-			const data = await apiFetchConversations();
-			setConversations(data);
-		} catch (error) {
-			console.error("Failed to fetch conversations:", error);
-		} finally {
-			setLoading(false);
-		}
-	};
+			const cachedMessages = await refreshMessages(conversationId);
 
-	const loadMessagesForConversation = async (conversationId: number) => {
-		try {
-			const cachedMessages = await messageCache.getMessages(conversationId);
-			setMessages(cachedMessages);
+				const conversation = await messageCache.getConversation(conversationId);
+				const lastSync =
+					conversation?.lastSyncTimestamp ?? new Date(0).toISOString();
 
-			const meta = await messageCache.getConversationMeta(conversationId);
-			const lastSync = meta?.lastSyncTimestamp || new Date(0).toISOString();
+				const newMessages = await fetchMessages(conversationId, lastSync);
+				if (newMessages.length > 0) {
+					await messageCache.saveMessages(newMessages);
+					const lastMessage = newMessages[newMessages.length - 1];
+					await messageCache.updateConversationMeta(conversationId, {
+						lastSyncTimestamp: lastMessage.createdAt,
+						lastMessageSeq: lastMessage.seq,
+					});
+					await refreshMessages(conversationId);
+					await refreshConversations();
+					await handleUpdateReadState(conversationId, lastMessage.seq);
+					return;
+				}
 
-			const newMessages = await fetchMessages(conversationId, lastSync);
-			if (newMessages.length > 0) {
-				await messageCache.saveMessages(newMessages);
-				setMessages((prev) => [...prev, ...newMessages]);
-
-				const lastMessage = newMessages[newMessages.length - 1];
-				await messageCache.updateConversationMeta(conversationId, {
-					lastSyncTimestamp: lastMessage.createdAt,
-				});
+				if (cachedMessages.length > 0) {
+					const lastMessage = cachedMessages[cachedMessages.length - 1];
+					await handleUpdateReadState(conversationId, lastMessage.seq);
+				}
+			} catch (error) {
+				console.error("Failed to load messages:", error);
 			}
+	},
+	[handleUpdateReadState, refreshConversations, refreshMessages],
+);
 
-			if (cachedMessages.length > 0 || newMessages.length > 0) {
-				const allMessages = [...cachedMessages, ...newMessages];
-				const lastMessage = allMessages[allMessages.length - 1];
-				await handleUpdateReadState(conversationId, lastMessage.seq);
-			}
-		} catch (error) {
-			console.error("Failed to load messages:", error);
-		}
-	};
+useEffect(() => {
+	if (!selectedChatId) {
+		setMessages([]);
+		return;
+	}
+
+	setHasOlderMessages(true);
+	void loadMessagesForConversation(selectedChatId);
+
+	const container = messagesContainerRef.current;
+	if (container) {
+		container.scrollTop = container.scrollHeight;
+	}
+}, [loadMessagesForConversation, selectedChatId]);
 
 	const handleLoadOlderMessages = async () => {
 		if (!selectedChatId || loadingOlder || !hasOlderMessages) return;
@@ -167,27 +263,13 @@ export default function Chats() {
 			if (olderMessages.length === 0) {
 				setHasOlderMessages(false);
 			} else {
-				const reversedOlder = olderMessages.reverse();
-				setMessages((prev) => [...reversedOlder, ...prev]);
+				await messageCache.saveMessages(olderMessages);
+				await refreshMessages(selectedChatId);
 			}
 		} catch (error) {
 			console.error("Failed to load older messages:", error);
 		} finally {
 			setLoadingOlder(false);
-		}
-	};
-
-	const handleUpdateReadState = async (
-		conversationId: number,
-		lastReadSeq: number,
-	) => {
-		try {
-			await markAsRead(conversationId, lastReadSeq);
-			setConversations((prev) =>
-				updateConversationUnreadCount(prev, conversationId, 0),
-			);
-		} catch (error) {
-			console.error("Failed to update read state:", error);
 		}
 	};
 
@@ -199,20 +281,15 @@ export default function Chats() {
 			await messageCache.saveMessages([newMessage]);
 			await messageCache.updateConversationMeta(selectedChatId, {
 				lastSyncTimestamp: newMessage.createdAt,
+				lastMessageSeq: newMessage.seq,
 			});
 
 			const container = messagesContainerRef.current;
 			if (container) {
 				shouldScrollToBottom.current = checkShouldScroll(container);
 			}
-			setMessages((prev) => [...prev, newMessage]);
-
-			setConversations((prev) =>
-				sortConversationsByLastMessage(
-					updateConversationLastMessage(prev, selectedChatId, newMessage.seq),
-				),
-			);
-
+			await refreshMessages(selectedChatId);
+			await refreshConversations();
 			await handleUpdateReadState(selectedChatId, newMessage.seq);
 		} catch (error) {
 			console.error("Failed to send message:", error);
@@ -228,10 +305,8 @@ export default function Chats() {
 			const conversation = await createDirectConversation(otherUserId);
 			setShowNewConversation(false);
 
-			const existingConv = conversations.find((c) => c.id === conversation.id);
-			if (!existingConv) {
-				setConversations((prev) => [conversation, ...prev]);
-			}
+			await messageCache.saveConversations([conversation]);
+			await refreshConversations();
 
 			setSelectedChatId(conversation.id);
 		} catch (error) {

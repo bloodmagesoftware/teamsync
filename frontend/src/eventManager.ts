@@ -1,6 +1,6 @@
 // Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)
 
-type EventType = "message.new" | "conversation.updated" | "keepalive";
+type EventType = "message.new" | "keepalive";
 
 interface Event {
 	type: EventType;
@@ -17,26 +17,47 @@ class EventManager {
 	private maxReconnectDelay = 30000;
 	private baseReconnectDelay = 1000;
 	private isIntentionallyClosed = false;
+	private connecting = false;
+	private lastMessageIdProvider: (() => Promise<number>) | null = null;
 
-	start(): void {
+	start(getLastMessageId: () => Promise<number>): void {
+		this.lastMessageIdProvider = getLastMessageId;
 		if (this.eventSource) {
 			return;
 		}
 
 		this.isIntentionallyClosed = false;
-		this.connect();
+		void this.connect();
 	}
 
-	private connect(): void {
+	private async connect(): Promise<void> {
+		if (this.eventSource || this.connecting) {
+			return;
+		}
+
 		const accessToken = localStorage.getItem("accessToken");
 		if (!accessToken) {
 			return;
 		}
 
+		this.connecting = true;
+
 		const url = new URL("/api/events/stream", window.location.origin);
 		url.searchParams.set("token", accessToken);
 
+		if (this.lastMessageIdProvider) {
+			try {
+				const lastMessageId = await this.lastMessageIdProvider();
+				if (lastMessageId > 0) {
+					url.searchParams.set("lastMessageId", lastMessageId.toString());
+				}
+			} catch (error) {
+				console.error("Failed to determine last message id:", error);
+			}
+		}
+
 		this.eventSource = new EventSource(url.toString());
+		this.connecting = false;
 
 		this.eventSource.onopen = () => {
 			this.reconnectAttempts = 0;
@@ -74,7 +95,7 @@ class EventManager {
 		this.reconnectTimeout = window.setTimeout(() => {
 			this.reconnectTimeout = null;
 			this.reconnectAttempts++;
-			this.connect();
+			void this.connect();
 		}, delay);
 	}
 
@@ -92,6 +113,7 @@ class EventManager {
 		}
 
 		this.reconnectAttempts = 0;
+		this.connecting = false;
 	}
 
 	addListener(callback: EventCallback): () => void {

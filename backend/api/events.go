@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -15,9 +16,8 @@ import (
 type EventType string
 
 const (
-	EventTypeMessageNew         EventType = "message.new"
-	EventTypeConversationUpdate EventType = "conversation.updated"
-	EventTypeKeepAlive          EventType = "keepalive"
+	EventTypeMessageNew EventType = "message.new"
+	EventTypeKeepAlive  EventType = "keepalive"
 )
 
 type Event struct {
@@ -90,7 +90,7 @@ func (em *eventManager) broadcast(userID int64, event Event) {
 	}
 }
 
-func (em *eventManager) broadcastToConversation(s *Server, conversationID int64, event Event, excludeUserID int64) {
+func (em *eventManager) broadcastToConversation(s *Server, conversationID int64, event Event) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -103,9 +103,6 @@ func (em *eventManager) broadcastToConversation(s *Server, conversationID int64,
 	defer em.mu.RUnlock()
 
 	for _, p := range participants {
-		if p.ID == excludeUserID {
-			continue
-		}
 		if clients, ok := em.clients[p.ID]; ok {
 			for ch := range clients {
 				select {
@@ -139,6 +136,50 @@ func (s *Server) handleEventStream(w http.ResponseWriter, r *http.Request) {
 	evtMgr.addClient(userID, eventChan)
 	defer evtMgr.removeClient(userID, eventChan)
 
+	writeEvent := func(event Event) error {
+		data, err := json.Marshal(event)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+
+	lastMessageIDStr := r.URL.Query().Get("lastMessageId")
+	if lastMessageIDStr != "" {
+		if lastMessageID, err := strconv.ParseInt(lastMessageIDStr, 10, 64); err == nil && lastMessageID > 0 {
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			messages, err := s.queries.GetMessagesAfterForUser(ctx, userID, lastMessageID)
+			cancel()
+			if err == nil {
+				for _, msg := range messages {
+					msgResp := s.convertToMessageResponse(
+						msg.ID,
+						msg.ConversationID,
+						msg.Seq,
+						msg.SenderID,
+						msg.SenderUsername,
+						msg.SenderProfileImageHash,
+						msg.CreatedAt,
+						msg.EditedAt,
+						msg.ContentType,
+						msg.Body,
+						msg.ReplyToID,
+					)
+					if err := writeEvent(Event{
+						Type: EventTypeMessageNew,
+						Data: msgResp,
+					}); err != nil {
+						return
+					}
+				}
+			}
+		}
+	}
+
 	keepAliveTicker := time.NewTicker(30 * time.Second)
 	defer keepAliveTicker.Stop()
 
@@ -154,23 +195,17 @@ func (s *Server) handleEventStream(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			data, err := json.Marshal(event)
-			if err != nil {
-				continue
+			if err := writeEvent(event); err != nil {
+				return
 			}
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
 		case <-keepAliveTicker.C:
 			keepAliveEvent := Event{
 				Type: EventTypeKeepAlive,
 				Data: map[string]int64{"timestamp": time.Now().Unix()},
 			}
-			data, err := json.Marshal(keepAliveEvent)
-			if err != nil {
-				continue
+			if err := writeEvent(keepAliveEvent); err != nil {
+				return
 			}
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
 		}
 	}
 }
@@ -182,16 +217,9 @@ func (s *Server) BroadcastMessage(userID int64, message messageResponse) {
 	})
 }
 
-func (s *Server) BroadcastMessageToConversation(conversationID int64, message messageResponse, excludeUserID int64) {
+func (s *Server) BroadcastMessageToConversation(conversationID int64, message messageResponse) {
 	evtMgr.broadcastToConversation(s, conversationID, Event{
 		Type: EventTypeMessageNew,
 		Data: message,
-	}, excludeUserID)
-}
-
-func (s *Server) BroadcastConversationUpdate(userID int64, conversation conversationResponse) {
-	evtMgr.broadcast(userID, Event{
-		Type: EventTypeConversationUpdate,
-		Data: conversation,
 	})
 }

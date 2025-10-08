@@ -13,6 +13,7 @@ interface MessageContentProps {
 	body: string;
 	contentType: string;
 	messageId?: number;
+	editedAt?: string;
 	onJoinCall?: () => void;
 }
 
@@ -20,6 +21,7 @@ export function MessageContent({
 	body,
 	contentType,
 	messageId,
+	editedAt,
 	onJoinCall,
 }: MessageContentProps) {
 	const [isDark, setIsDark] = useState(true);
@@ -39,7 +41,7 @@ export function MessageContent({
 			};
 			checkStatus();
 		}
-	}, [contentType, messageId]);
+	}, [contentType, editedAt, messageId]);
 
 	useEffect(() => {
 		if (typeof document === "undefined" || typeof window === "undefined") {

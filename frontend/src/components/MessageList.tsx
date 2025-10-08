@@ -83,10 +83,11 @@ export function MessageList({
 							</span>
 						</div>
 						<div className="col-start-2 max-w-full overflow-auto">
-							<MessageContent 
-								body={msg.body} 
+							<MessageContent
+								body={msg.body}
 								contentType={msg.contentType}
 								messageId={msg.id}
+								editedAt={msg.editedAt}
 								onJoinCall={msg.contentType === "application/call" ? () => onJoinCall?.(msg.id) : undefined}
 							/>
 						</div>
