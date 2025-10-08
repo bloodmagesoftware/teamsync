@@ -14,11 +14,17 @@ import (
 
 	"github.com/bloodmagesoftware/teamsync/api"
 	"github.com/bloodmagesoftware/teamsync/auth"
+	"github.com/bloodmagesoftware/teamsync/crypto"
 	"github.com/bloodmagesoftware/teamsync/db"
 	"github.com/bloodmagesoftware/teamsync/rtc"
 )
 
 func main() {
+	if err := crypto.InitializeEncryption(); err != nil {
+		log.Fatalf("failed to initialize encryption: %v", err)
+	}
+	defer crypto.Shutdown()
+
 	_ = os.MkdirAll("data", 0755)
 	database, err := db.Init("data/teamsync.db")
 	if err != nil {

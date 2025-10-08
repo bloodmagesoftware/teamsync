@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bloodmagesoftware/teamsync/auth"
+	"github.com/bloodmagesoftware/teamsync/crypto"
 )
 
 type conversationResponse struct {
@@ -192,7 +193,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		for i, msg := range msgs {
 			response[i] = s.convertToMessageResponse(msg.ID, msg.ConversationID, msg.Seq, msg.SenderID,
 				msg.SenderUsername, msg.SenderProfileImageHash, msg.CreatedAt, msg.EditedAt,
-				msg.ContentType, msg.Body, msg.ReplyToID)
+				msg.ContentType, msg.Body, msg.EncryptedBody, msg.IsEncrypted, msg.ReplyToID)
 		}
 	} else if beforeStr != "" {
 		beforeTime, err := time.Parse(time.RFC3339, beforeStr)
@@ -209,7 +210,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		for i, msg := range msgs {
 			response[i] = s.convertToMessageResponse(msg.ID, msg.ConversationID, msg.Seq, msg.SenderID,
 				msg.SenderUsername, msg.SenderProfileImageHash, msg.CreatedAt, msg.EditedAt,
-				msg.ContentType, msg.Body, msg.ReplyToID)
+				msg.ContentType, msg.Body, msg.EncryptedBody, msg.IsEncrypted, msg.ReplyToID)
 		}
 	} else {
 		offsetStr := r.URL.Query().Get("offset")
@@ -228,7 +229,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		for i, msg := range msgs {
 			response[i] = s.convertToMessageResponse(msg.ID, msg.ConversationID, msg.Seq, msg.SenderID,
 				msg.SenderUsername, msg.SenderProfileImageHash, msg.CreatedAt, msg.EditedAt,
-				msg.ContentType, msg.Body, msg.ReplyToID)
+				msg.ContentType, msg.Body, msg.EncryptedBody, msg.IsEncrypted, msg.ReplyToID)
 		}
 	}
 
@@ -238,7 +239,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) convertToMessageResponse(id, conversationID, seq, senderID int64,
 	senderUsername string, senderProfileImageHash *string, createdAt time.Time, editedAt *time.Time,
-	contentType, body string, replyToID *int64) messageResponse {
+	contentType, body string, encryptedBody *string, isEncrypted bool, replyToID *int64) messageResponse {
 
 	var profileImageURL *string
 	if senderProfileImageHash != nil {
@@ -252,6 +253,14 @@ func (s *Server) convertToMessageResponse(id, conversationID, seq, senderID int6
 		editedAtStr = &str
 	}
 
+	messageBody := body
+	if isEncrypted && encryptedBody != nil {
+		decrypted, err := crypto.DecryptMessage(*encryptedBody, conversationID)
+		if err == nil {
+			messageBody = decrypted
+		}
+	}
+
 	return messageResponse{
 		ID:                    id,
 		ConversationID:        conversationID,
@@ -262,7 +271,7 @@ func (s *Server) convertToMessageResponse(id, conversationID, seq, senderID int6
 		CreatedAt:             createdAt.Format("2006-01-02T15:04:05Z"),
 		EditedAt:              editedAtStr,
 		ContentType:           contentType,
-		Body:                  body,
+		Body:                  messageBody,
 		ReplyToID:             replyToID,
 	}
 }
@@ -380,7 +389,13 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		contentType = "text/plain"
 	}
 
-	message, err := tx.CreateMessage(r.Context(), conversationID, conv.LastMessageSeq, userID, contentType, req.Body, req.ReplyToID)
+	encryptedBody, err := crypto.EncryptMessage(req.Body, conversationID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	message, err := tx.CreateMessage(r.Context(), conversationID, conv.LastMessageSeq, userID, contentType, "", &encryptedBody, true, req.ReplyToID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -412,7 +427,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		SenderProfileImageURL: profileImageURL,
 		CreatedAt:             message.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		ContentType:           message.ContentType,
-		Body:                  message.Body,
+		Body:                  req.Body,
 		ReplyToID:             req.ReplyToID,
 	}
 

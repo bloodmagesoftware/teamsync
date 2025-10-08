@@ -12,4 +12,5 @@ services:
     environment:
       - TURN_LISTEN_ADDRESS=:3478
       - TURN_REALM=teamsync
+      - TEAMSYNC_ENCRYPTION_KEY=${TEAMSYNC_ENCRYPTION_KEY}
     restart: unless-stopped

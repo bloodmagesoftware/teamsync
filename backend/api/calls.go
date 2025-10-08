@@ -123,7 +123,7 @@ func (s *Server) handleStartCall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message, err := tx.CreateMessage(r.Context(), req.ConversationID, conv.LastMessageSeq, userID, "application/call", "", nil)
+	message, err := tx.CreateMessage(r.Context(), req.ConversationID, conv.LastMessageSeq, userID, "application/call", "", nil, false, nil)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return

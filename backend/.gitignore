@@ -1,6 +1,3 @@
-*.db
-*.db-shm
-*.db-wal
 tmp/
 *.sqlc.go
 /teamsync

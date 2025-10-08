@@ -1,0 +1,38 @@
+# Copyright (C) 2025  Mayer & Ott GbR AGPL v3 (license file is attached)
+
+# Secure production configuration for TeamSync
+# Usage: docker compose -f docker-compose.secure.yaml up -d
+
+services:
+  teamsync:
+    build: .
+    ports:
+      - "127.0.0.1:8080:8080" # Only bind to localhost, use reverse proxy for external access
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+    volumes:
+      - teamsync_data:/data:rw # Use named volume for better security
+    environment:
+      - TURN_RELAY_IP=127.0.0.1 # Write your public IP here
+      - TURN_LISTEN_ADDRESS=:3478
+      - TURN_REALM=teamsync
+      - TEAMSYNC_ENCRYPTION_KEY=${TEAMSYNC_ENCRYPTION_KEY:?TEAMSYNC_ENCRYPTION_KEY is required}
+    restart: unless-stopped
+    read_only: true # Make container filesystem read-only except for volumes
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+
+volumes:
+  teamsync_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./teamsync_data
+

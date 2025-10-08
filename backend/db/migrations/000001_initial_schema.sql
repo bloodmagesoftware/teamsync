@@ -74,6 +74,8 @@ CREATE TABLE messages (
     deleted_at DATETIME,
     content_type TEXT NOT NULL DEFAULT 'text/plain',
     body TEXT NOT NULL,
+    encrypted_body TEXT,
+    is_encrypted BOOLEAN NOT NULL DEFAULT 0,
     reply_to_id INTEGER,
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
     FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -83,6 +85,7 @@ CREATE TABLE messages (
 
 CREATE INDEX idx_messages_conversation ON messages(conversation_id, seq DESC);
 CREATE INDEX idx_messages_sender ON messages(sender_id);
+CREATE INDEX idx_messages_encrypted ON messages(is_encrypted);
 
 -- Message attachments table
 CREATE TABLE message_attachments (
