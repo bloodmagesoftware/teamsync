@@ -41,19 +41,21 @@ export default function Settings() {
 		}
 
 		function ChatSettings() {
-			const { settings, refreshSettings } = useUserSettings();
+			const { settings, refreshSettings, isLoading } = useUserSettings();
 			const [enterSendsMessage, setEnterSendsMessage] = useState(false);
 			const [markdownEnabled, setMarkdownEnabled] = useState(true);
-			const [loading, setLoading] = useState(true);
 			const [saving, setSaving] = useState(false);
+			const [error, setError] = useState<string | null>(null);
 
 			useEffect(() => {
 				if (settings) {
 					setEnterSendsMessage(settings.enterSendsMessage);
 					setMarkdownEnabled(settings.markdownEnabled);
-					setLoading(false);
+					setError(null);
+				} else if (!isLoading && !settings) {
+					setError("Failed to load settings. Please refresh the page.");
 				}
-			}, [settings]);
+			}, [settings, isLoading]);
 
 			const updateEnterSendsMessage = async (value: boolean) => {
 				setSaving(true);
@@ -119,8 +121,26 @@ export default function Settings() {
 				updateMarkdownEnabled(newValue);
 			};
 
-			if (loading) {
+			if (isLoading) {
 				return <div>Loading...</div>;
+			}
+
+			if (error) {
+				return (
+					<div>
+						<h2 className="text-2xl font-bold mb-4">Chat Settings</h2>
+						<div className="text-ctp-red mb-4">{error}</div>
+						<button
+							onClick={() => {
+								setError(null);
+								refreshSettings();
+							}}
+							className="px-4 py-2 bg-ctp-blue text-ctp-base rounded hover:bg-ctp-sapphire"
+						>
+							Retry
+						</button>
+					</div>
+				);
 			}
 
 			return (

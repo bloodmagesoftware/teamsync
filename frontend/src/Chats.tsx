@@ -295,8 +295,12 @@ export default function Chats() {
 							messagesContainerRef={messagesContainerRef}
 							onBack={() => setSelectedChatId(null)}
 							onLoadOlder={handleLoadOlderMessages}
-							onStartCall={selectedConversation.type === "dm" ? handleStartCall : undefined}
-							onJoinCall={selectedConversation.type === "dm" ? handleJoinCall : undefined}
+							onStartCall={
+								selectedConversation.type === "dm" ? handleStartCall : undefined
+							}
+							onJoinCall={
+								selectedConversation.type === "dm" ? handleJoinCall : undefined
+							}
 						/>
 						<MessageInput onSend={handleSendMessage} />
 					</>
