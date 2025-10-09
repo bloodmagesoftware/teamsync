@@ -16,6 +16,8 @@ COPY backend ./
 COPY --from=frontend /app/frontend/dist/assets ./public/assets
 COPY --from=frontend /app/frontend/dist/*.html ./public/
 COPY --from=frontend /app/frontend/dist/*.svg ./public/
+COPY --from=frontend /app/frontend/dist/*.png ./public/
+COPY --from=frontend /app/frontend/dist/*.json ./public/
 RUN sqlc generate && \
     go build -a -installsuffix cgo -ldflags="-linkmode external -extldflags '-static' -s -w" -o teamsync main.go
 

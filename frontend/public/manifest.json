@@ -1,0 +1,17 @@
+{
+	"short_name": "TeamSync",
+	"name": "TeamSync",
+	"description": "TeamSync is a communication platform for teams",
+	"categories": ["business", "productivity", "utilities", "social"],
+	"icons": [
+		{
+			"src": "/favicon.png",
+			"sizes": "256x256",
+			"type": "image/png"
+		}
+	],
+	"start_url": "/",
+	"display": "standalone",
+	"theme_color": "#cba6f7",
+	"background_color": "#1e1e2e"
+}
