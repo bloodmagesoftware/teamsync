@@ -200,6 +200,10 @@ func (s *Server) handleStaticFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.HasPrefix(r.URL.Path, "/assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=2592000") // 30 days
+	}
+
 	switch ext := filepath.Ext(fsPath); ext {
 	case ".js":
 		w.Header().Set("Content-Type", "application/javascript")
