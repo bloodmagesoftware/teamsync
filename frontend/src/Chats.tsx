@@ -196,10 +196,10 @@ export default function Chats() {
 		syncConversationsFromServer,
 	]);
 
-const loadMessagesForConversation = useCallback(
-	async (conversationId: number) => {
-		try {
-			const cachedMessages = await refreshMessages(conversationId);
+	const loadMessagesForConversation = useCallback(
+		async (conversationId: number) => {
+			try {
+				const cachedMessages = await refreshMessages(conversationId);
 
 				const conversation = await messageCache.getConversation(conversationId);
 				const lastSync =
@@ -226,24 +226,24 @@ const loadMessagesForConversation = useCallback(
 			} catch (error) {
 				console.error("Failed to load messages:", error);
 			}
-	},
-	[handleUpdateReadState, refreshConversations, refreshMessages],
-);
+		},
+		[handleUpdateReadState, refreshConversations, refreshMessages],
+	);
 
-useEffect(() => {
-	if (!selectedChatId) {
-		setMessages([]);
-		return;
-	}
+	useEffect(() => {
+		if (!selectedChatId) {
+			setMessages([]);
+			return;
+		}
 
-	setHasOlderMessages(true);
-	void loadMessagesForConversation(selectedChatId);
+		setHasOlderMessages(true);
+		void loadMessagesForConversation(selectedChatId);
 
-	const container = messagesContainerRef.current;
-	if (container) {
-		container.scrollTop = container.scrollHeight;
-	}
-}, [loadMessagesForConversation, selectedChatId]);
+		const container = messagesContainerRef.current;
+		if (container) {
+			container.scrollTop = container.scrollHeight;
+		}
+	}, [loadMessagesForConversation, selectedChatId]);
 
 	const handleLoadOlderMessages = async () => {
 		if (!selectedChatId || loadingOlder || !hasOlderMessages) return;

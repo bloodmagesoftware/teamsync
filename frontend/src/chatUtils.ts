@@ -56,9 +56,9 @@ export function formatMessageTime(timestamp: string): string {
 	return messageDate.toLocaleString();
 }
 
-export function sortConversationsByLastMessage(
-	conversations: Conversation[],
-): Conversation[] {
+export function sortConversationsByLastMessage<T extends Conversation>(
+	conversations: T[],
+): T[] {
 	return [...conversations].sort((a, b) => b.lastMessageSeq - a.lastMessageSeq);
 }
 

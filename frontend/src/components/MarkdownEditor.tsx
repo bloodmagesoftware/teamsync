@@ -305,7 +305,7 @@ export function MarkdownEditor({
 					padding: "12px",
 					lineHeight: "1.75",
 					fontFamily:
-						'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+						"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, monospace",
 					caretColor: "rgb(var(--ctp-rosewater))",
 				},
 				"&.cm-editor": {
